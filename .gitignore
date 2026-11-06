@@ -1,0 +1,18 @@
+# dados reais e segredos NUNCA vão para o repositório
+instancia/
+*.sqlite3
+*.sqlite3-*
+chave_secreta
+.env
+*.env
+mapa-backup*.zip
+# arquivos de fotos
+*.zip
+!testes/amostras/*.zip
+# ambiente local
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
