@@ -1,0 +1,10 @@
+# Endereços definidos em /opt/mapa/caddy.env (gerado na instalação a partir do IP público)
+{$DOMINIO_PRODUCAO} {
+	encode gzip
+	reverse_proxy producao:8080
+}
+
+{$DOMINIO_HOMOLOG} {
+	encode gzip
+	reverse_proxy homolog:8080
+}

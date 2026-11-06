@@ -59,8 +59,8 @@ Variáveis úteis: `MAPA_PORTA`, `MAPA_DADOS_DIR` (onde ficam banco e ZIPs; padr
 `MAPA_MAX_ZIP_MB` (padrão 2048), `MAPA_SECRET_KEY` (se não definida, é gerada em
 `instancia/chave_secreta`, com permissão 600).
 
-**Publicação online:** ver `PUBLICACAO.md` (GitHub + Render, produção e homologação, deploy
-automático, backup e migração dos dados). Rode sempre um único processo: a fila de processamento fica dentro dele.
+**Publicação online:** ver `PUBLICACAO.md` (GitHub + servidor gratuito da Oracle, produção e
+homologação, atualização automática, backup e migração dos dados). Rode sempre um único processo: a fila de processamento fica dentro dele.
 
 ## Envio de ZIP
 
@@ -148,6 +148,6 @@ mapa/
   templates/, static/  relatório (mesmo formato do index.html), login, painel, conta
 testes/              testes automatizados e amostras
 Dockerfile           imagem da hospedagem (com Tesseract); roda os testes na construção
-render.yaml          os dois ambientes na Render (produção ← main, homologação ← develop)
+deploy/oracle/       servidor Oracle: instalação (cloud-init), Docker Compose, Caddy (HTTPS), atualização
 .github/workflows/   CI: testes + construção da imagem a cada envio ao GitHub
 ```

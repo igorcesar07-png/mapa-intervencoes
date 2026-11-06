@@ -1,0 +1,44 @@
+# Produção (main) e homologação (develop) no mesmo servidor, atrás do Caddy (HTTPS automático).
+# Os contêineres não publicam porta: só o Caddy recebe conexões de fora.
+name: mapa
+services:
+  producao:
+    build: /opt/mapa/src/main
+    image: mapa-producao:atual
+    container_name: mapa-producao
+    restart: unless-stopped
+    env_file: /opt/mapa/producao.env
+    environment:
+      PORT: "8080"
+      MAPA_DADOS_DIR: /var/data/instancia
+      MAPA_WORKER_THREADS: "2"
+      MAPA_AMBIENTE: producao
+    volumes:
+      - /srv/mapa/producao:/var/data
+  homolog:
+    build: /opt/mapa/src/develop
+    image: mapa-homolog:atual
+    container_name: mapa-homolog
+    restart: unless-stopped
+    env_file: /opt/mapa/homolog.env
+    environment:
+      PORT: "8080"
+      MAPA_DADOS_DIR: /var/data/instancia
+      MAPA_WORKER_THREADS: "1"
+      MAPA_MAX_ZIP_MB: "300"
+      MAPA_AMBIENTE: homologacao
+    volumes:
+      - /srv/mapa/homolog:/var/data
+  caddy:
+    image: caddy:2.10
+    container_name: mapa-caddy
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    env_file: /opt/mapa/caddy.env
+    volumes:
+      - /opt/mapa/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_dados:/data
+      - caddy_config:/config
+volumes:
+  caddy_dados:
+  caddy_config:
