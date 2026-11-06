@@ -1,0 +1,8 @@
+# Versões testadas (nov/2026). Faixas fechadas para a hospedagem e o PC instalarem o mesmo comportamento.
+flask>=3.1,<4
+waitress>=3.0.2,<4
+defusedxml>=0.7.1,<0.8
+pillow>=11,<13
+pillow-heif>=0.18,<2
+numpy>=1.26,<3
+pytest>=8

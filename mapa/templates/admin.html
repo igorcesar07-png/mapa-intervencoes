@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
+<title>Painel · Mapa de Intervenções</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='admin.css', v=v_recursos) }}">
+</head>
+<body>
+<header class="topo">
+  <h1>Painel do administrador</h1>
+  <nav>
+    <a href="#envio">Envio</a><a href="#ocorrencias">Ocorrências <b id="nOc"></b></a><a href="#classificar">Classificar</a>
+    <a href="#regras">Regras</a><a href="#eixo">Eixo</a><a href="#usuarios">Usuários</a><a href="#backup">Backup</a>
+    <a class="destaque" href="{{ url_for('rotas.relatorio') }}">Abrir relatório</a>
+    <a href="{{ url_for('rotas.conta') }}">Conta</a>
+    <form method="post" action="{{ url_for('rotas.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit">Sair</button></form>
+  </nav>
+</header>
+<main>
+  <section class="card" id="envio">
+    <h2>Enviar fotos</h2>
+    <p class="hint">Envie o ZIP com as fotos do serviço (.jpg, .jpeg, .png ou .heic). O processamento roda em segundo plano: você pode continuar usando o sistema, e o relatório se atualiza sozinho quando terminar. ZIP ou foto já enviados não são processados de novo.</p>
+    <form id="fZip" class="linha">
+      <input type="file" id="zip" accept=".zip,application/zip" required>
+      <button class="btn pri" type="submit" id="btnZip">Enviar ZIP</button>
+    </form>
+    <div class="barra" id="upBarra" hidden><i></i></div>
+    <p class="msg" id="upMsg" role="status"></p>
+    <h3>Envios recentes</h3>
+    <div class="tabela"><table>
+      <thead><tr><th>#</th><th>Arquivo / lote</th><th>Estado</th><th>Progresso</th><th>Resultado</th><th>Enviado</th></tr></thead>
+      <tbody id="tEnvios"><tr><td colspan="6" class="hint">Carregando…</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="card" id="ocorrencias">
+    <h2>Ocorrências para revisão</h2>
+    <p class="hint">Fotos sem coordenada ou sem data, datas e coordenadas corrigidas pelo OCR, arquivos ignorados e caminhos suspeitos dentro do ZIP. Nenhum dado é inventado: a foto sem coordenada fica fora do mapa até ser revista.</p>
+    <div class="linha"><label class="chk"><input type="checkbox" id="ocResolvidas"> Mostrar as já revisadas</label></div>
+    <div class="lista" id="lOc"></div>
+  </section>
+
+  <section class="card" id="classificar">
+    <h2>Classificar fotos</h2>
+    <p class="hint"><b>Antes</b>: buraco aberto. <b>Tapado</b>: buraco com o serviço feito. <b>Não relacionada</b>: chuva, captura de tela, foto sem buraco — sai do relatório. Só buracos com foto <b>Tapado</b> entram no mapa de calor; fotos ainda não classificadas seguem a regra configurada em <a href="#regras">Regras</a>. Cada escolha é <b>salva na hora</b>; o quadro embaixo da foto mostra “Salvando…”, “Classificação salva” ou o erro. Em “Não classificadas”, a foto já classificada sai da lista quando a página for recarregada — veja em <b>Mostrar: Todas</b>.</p>
+    <div class="linha">
+      <label>Mostrar <select id="cClasse">
+        <option value="nao_classificada">Não classificadas</option><option value="antes">Antes</option>
+        <option value="depois">Tapado</option><option value="outro">Não relacionadas</option><option value="todas">Todas</option></select></label>
+      <label>Lote <select id="cLote"><option value="">Todos</option></select></label>
+      <span class="hint" id="cTotal"></span>
+    </div>
+    <div class="fotos" id="gFotos"></div>
+    <div class="linha"><button class="btn" id="cAnt" type="button">Anteriores</button><button class="btn" id="cProx" type="button">Próximas</button></div>
+  </section>
+
+  <section class="card" id="regras">
+    <h2>Regras do relatório</h2>
+    <form id="fRegras">
+      <label>Inconsistência: foto a mais de <input type="number" id="pLim" min="30" max="5000" step="10" class="curto"> m do eixo</label>
+      <label class="chk"><input type="checkbox" id="pTrav"> Marcar como inconsistência a coordenada idêntica em fotos com 5+ min de diferença (GPS travado)</label>
+      <label class="chk"><input type="checkbox" id="pNc"> Fotos ainda não classificadas contam como buraco tapado (regra usada no lote de 22/10)</label>
+      <button class="btn pri" type="submit">Salvar regras</button>
+      <p class="msg" id="pMsg" role="status"></p>
+    </form>
+  </section>
+
+  <section class="card" id="eixo">
+    <h2>Eixo da rodovia</h2>
+    <p class="hint">KMZ/KML de estacas (pontos “km+m” com o campo “Bloco”). Um bloco novo é somado aos existentes; um bloco com o mesmo número é substituído.</p>
+    <div class="lista" id="lEixo"></div>
+    <form id="fKmz" class="linha">
+      <input type="file" id="kmz" accept=".kmz,.kml" required>
+      <button class="btn" type="submit">Adicionar bloco</button>
+    </form>
+    <p class="msg" id="kMsg" role="status"></p>
+  </section>
+
+  <section class="card" id="usuarios">
+    <h2>Usuários</h2>
+    <div class="tabela"><table>
+      <thead><tr><th>E-mail</th><th>Nome</th><th>Papel</th><th>Situação</th><th>Último acesso</th><th></th></tr></thead>
+      <tbody id="tUsu"></tbody>
+    </table></div>
+    <h3>Novo usuário</h3>
+    <form id="fUsu" class="linha">
+      <input type="email" id="uEmail" placeholder="email@empresa.com" required>
+      <input type="text" id="uNome" placeholder="Nome">
+      <select id="uPapel"><option value="visualizador">Visualizador</option><option value="admin">Administrador</option></select>
+      <button class="btn pri" type="submit">Criar</button>
+    </form>
+    <p class="msg" id="uMsg" role="status"></p>
+  </section>
+  <section class="card" id="backup">
+    <h2>Backup</h2>
+    <p class="hint">Baixa um arquivo .zip com <b>todo</b> o sistema: banco (fotos lidas, classificações, regras, eixo, usuários) e os ZIPs originais enviados. Guarde-o fora da hospedagem. A hospedagem também faz uma cópia diária automática do disco.</p>
+    <div class="linha"><a class="btn pri" href="/api/admin/backup" id="btnBackup">Baixar backup completo</a><span class="hint" id="bkHint"></span></div>
+    <div id="restaurar" hidden>
+      <h3>Restaurar backup (instalação nova)</h3>
+      <p class="hint">Este sistema ainda está vazio. Envie aqui o backup gerado no computador (<code>FAZER_BACKUP.bat</code>) para trazer todos os dados. Cada arquivo é conferido (SHA-256) antes de gravar; com qualquer dado já existente a restauração é recusada, para nunca sobrescrever nada.</p>
+      <form id="fRest" class="linha">
+        <input type="file" id="rArq" accept=".zip" required>
+        <button class="btn" type="submit" id="btnRest">Restaurar</button>
+      </form>
+      <div class="barra" id="rBarra" hidden><i></i></div>
+    </div>
+    <p class="msg" id="rMsg" role="status"></p>
+  </section>
+</main>
+<div class="lightbox" id="lb"><img alt=""></div>
+<script src="{{ url_for('rotas.recursos', nome='admin.js', v=v_recursos) }}"></script>
+</body>
+</html>

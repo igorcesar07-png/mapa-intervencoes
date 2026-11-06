@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf" content="{{ csrf }}">
+<title>Minha conta · Mapa de Intervenções</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='admin.css', v=v_recursos) }}">
+</head>
+<body>
+<header class="topo">
+  <h1>Minha conta</h1>
+  <nav><a href="{{ url_for('rotas.relatorio') }}">Relatório</a>{% if admin %}<a href="{{ url_for('rotas.admin') }}">Painel</a>{% endif %}
+    <form method="post" action="{{ url_for('rotas.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit">Sair</button></form></nav>
+</header>
+<main class="estreito">
+  <section class="card">
+    <h2>{{ usuario.nome or usuario.email }}</h2>
+    <p class="hint">{{ usuario.email }} · {{ 'Administrador' if admin else 'Visualizador' }}</p>
+    <form id="fSenha">
+      <label>Senha atual<input type="password" id="atual" autocomplete="current-password" required></label>
+      <label>Nova senha (mín. {{ senha_min }} caracteres)<input type="password" id="nova" autocomplete="new-password" minlength="{{ senha_min }}" required></label>
+      <label>Repita a nova senha<input type="password" id="nova2" autocomplete="new-password" required></label>
+      <button class="btn pri" type="submit">Trocar senha</button>
+      <p class="msg" id="msg" role="status"></p>
+    </form>
+  </section>
+</main>
+<script src="{{ url_for('rotas.recursos', nome='conta.js', v=v_recursos) }}"></script>
+</body>
+</html>

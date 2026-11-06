@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="csrf" content="{{ csrf }}">
+<title>Mapa de Intervenções</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='vendor/leaflet/leaflet.css', v=v_recursos) }}">
+<link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='relatorio.css', v=v_recursos) }}">
+<link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='web.css', v=v_recursos) }}">
+</head>
+<body data-papel="{{ usuario.papel }}">
+<div class="app">
+  <aside id="painel">
+    <div class="head" id="cabecalho">
+      <div class="conta">
+        <span class="papel {{ 'adm' if admin else '' }}">{{ 'Administrador' if admin else 'Visualizador' }}</span>
+        <span class="quem" title="{{ usuario.email }}">{{ usuario.nome or usuario.email }}</span>
+        {% if admin %}<a href="{{ url_for('rotas.admin') }}">Painel</a>{% endif %}
+        <a href="{{ url_for('rotas.conta') }}">Conta</a>
+        <form method="post" action="{{ url_for('rotas.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit">Sair</button></form>
+      </div>
+      <h1>Mapa de Intervenções</h1>
+      <p id="sub">Carregando dados…</p>
+      <div class="kpis">
+        {% if admin %}
+        <div class="kpi"><b id="kFotos">–</b><span>fotos no filtro</span></div>
+        <div class="kpi"><b id="kInt">–</b><span>buracos tapados</span></div>
+        <div class="kpi bad"><b id="kAnom">–</b><span>inconsistências</span></div>
+        {% else %}
+        <div class="kpi"><b id="kInt">–</b><span>buracos tapados</span></div>
+        <div class="kpi"><b id="kDias">–</b><span>dias com serviço</span></div>
+        <div class="kpi"><b id="kKm">–</b><span>km com serviço</span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <section>
+      <h2>Dados <small id="lotesInfo"></small></h2>
+      <div class="row">
+        <button class="btn" id="btnCsv" type="button">Exportar CSV</button>
+        {% if admin %}<a class="btn pri" href="{{ url_for('rotas.admin') }}">Enviar ZIP de fotos</a>{% endif %}
+      </div>
+      <p class="hint" id="procInfo"></p>
+    </section>
+
+    <section>
+      <h2>Filtros</h2>
+      <div class="row">
+        <label class="f">De<input type="date" id="fDe"></label>
+        <label class="f">Até<input type="date" id="fAte"></label>
+      </div>
+      <div class="row">
+        <label class="f">Mês<select id="fMes"><option value="">Todos</option></select></label>
+        <label class="f">Lote / ZIP<select id="fLote"><option value="">Todos</option></select></label>
+      </div>
+      <div class="row">
+        <div class="f">Bloco
+          <div class="multi" id="fBlocos">
+            <button type="button" class="multi-btn" id="fBlocosBtn" aria-haspopup="true" aria-expanded="false" aria-controls="fBlocosMenu">
+              <span class="multi-val" id="fBlocosVal">Todos</span><span aria-hidden="true">▾</span></button>
+            <div class="multi-menu" id="fBlocosMenu" role="group" aria-label="Blocos" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px"><div class="chips" id="dias"></div></div>
+      <p class="hint">A data usada é a do <b>carimbo da foto</b> (ou EXIF da câmera), nunca a data do arquivo.</p>
+    </section>
+
+    <section>
+      <h2>Camadas</h2>
+      <label class="chk"><input type="checkbox" id="lSeg" checked> Intensidade por trecho <em>buracos/km</em></label>
+      <label class="chk"><input type="checkbox" id="oFundo" checked> Fundo discreto <em>realça as intervenções</em></label>
+      <label class="chk"><input type="checkbox" id="lCalor" checked> Mapa de calor</label>
+      <label class="chk"><input type="checkbox" id="lPontos" checked> Pontos (1 por buraco)</label>
+      {% if admin %}
+      <label class="chk"><input type="checkbox" id="lAnom" checked> Destacar inconsistências</label>
+      <label class="chk"><input type="checkbox" id="oSoAntes"> Mostrar buracos sem foto de tapado <em>cinza</em></label>
+      {% endif %}
+      <label class="chk"><input type="checkbox" id="lTracado" checked> Eixo da rodovia (KMZ)</label>
+      <label class="chk"><input type="checkbox" id="lKm" checked> Marcos de km</label>
+      <div class="row" style="margin-top:8px">
+        <label class="f">Raio do calor <input type="range" id="rRaio" min="8" max="45" value="22"></label>
+        <label class="f">Saturação <input type="range" id="rMax" min="1" max="10" value="3"></label>
+      </div>
+      <div class="legend">menos <i></i> mais</div>
+    </section>
+
+    <section>
+      <h2>Eixo da rodovia</h2>
+      <div class="list" id="blocosList" style="max-height:none;gap:4px"></div>
+      {% if admin %}
+      <p class="hint" id="anomRegra"></p>
+      <div class="list" id="anomList" style="margin-top:8px"></div>
+      {% endif %}
+    </section>
+
+    <section>
+      <h2>Intervenções ao longo do trecho <small><select id="binKm" style="width:auto;padding:2px 4px;font-size:11.5px"><option value="1">1 km</option><option value="2" selected>2 km</option><option value="5">5 km</option></select></small></h2>
+      <div class="chart" id="chKm"></div>
+      <p class="hint" id="chKmNota"></p>
+    </section>
+
+    <section>
+      <h2>Por dia</h2>
+      <div class="chart" id="chDia"></div>
+    </section>
+
+    {% if admin %}
+    <section>
+      <h2>Fotos fora do mapa <small id="semInfo"></small></h2>
+      <p class="hint" style="margin:0 0 8px">Cada ponto do mapa é <b>um buraco</b>: as fotos de antes e depois a até 25 m uma da outra, no mesmo dia, contam uma vez só. Entram no calor só os buracos com foto do serviço feito (buraco tapado).</p>
+      <details><summary id="semSum">Sem coordenada</summary><div class="grid-th" id="semGrid"></div></details>
+      <details><summary id="outSum">Não relacionadas ao tapa-buraco</summary><div class="grid-th" id="outGrid"></div></details>
+      <details><summary id="antSum">Buraco sem foto de tapado</summary><div class="grid-th" id="antGrid"></div></details>
+    </section>
+    {% endif %}
+
+    <div class="foot">
+      Cada ponto é um buraco tapado; o calor mostra onde houve mais intervenções.
+      {% if admin %}Visualizadores veem só os buracos tapados válidos: inconsistências, fotos excluídas, buracos sem foto de tapado e fotos extras do mesmo local ficam restritos ao administrador.{% endif %}
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+<div class="lightbox" id="lb"><img alt=""></div>
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('rotas.recursos', nome='vendor/leaflet/leaflet.js', v=v_recursos) }}"></script>
+<script src="{{ url_for('rotas.recursos', nome='vendor/leaflet-heat.js', v=v_recursos) }}"></script>
+<script src="{{ url_for('rotas.recursos', nome='relatorio.js', v=v_recursos) }}"></script>
+</body>
+</html>
