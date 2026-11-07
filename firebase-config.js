@@ -1,0 +1,1 @@
+window.FIREBASE_CFG = {"apiKey":"AIzaSyDYurqLesIbIbghMENn8mT9CMoe9xrQwco","projectId":"mapa-intervencoes","authDomain":"mapa-intervencoes.firebaseapp.com"};

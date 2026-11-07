@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mapa de Intervenções · Neovia Engenharia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="recursos/marca/favicon-32.png">
+<link rel="apple-touch-icon" href="recursos/marca/favicon-180.png">
+<meta name="theme-color" content="#D20A11">
+<link rel="stylesheet" href="recursos/leaflet.css">
+<link rel="stylesheet" href="recursos/relatorio.css?v=18257045feeb">
+<link rel="stylesheet" href="recursos/web.css?v=18257045feeb">
+<link rel="stylesheet" href="recursos/marca.css?v=18257045feeb">
+</head>
+<body data-papel="visualizador">
+<div class="app">
+  <aside id="painel">
+    <div class="head" id="cabecalho">
+      <div class="conta"><span class="papel">Visualizador</span><span class="quem">consulta pública</span><a href="admin.html">Entrar como administrador</a></div>
+      <div class="marca-topo">
+      <img class="marca-logo marca-claro" src="recursos/marca/neovia-logo.png" alt="Neovia Engenharia" width="133" height="38">
+      <img class="marca-logo marca-escuro" src="recursos/marca/neovia-logo-negativo.png" alt="Neovia Engenharia" width="122" height="38">
+        <span class="marca-sep" aria-hidden="true"></span>
+        <h1 class="marca-produto">Mapa de Intervenções<small>Tapa-buraco · Via Araucária</small></h1>
+      </div>
+      <p id="sub">Carregando dados…</p>
+      <div class="kpis">
+        
+        <div class="kpi"><b id="kInt">–</b><span>buracos tapados</span></div>
+        <div class="kpi"><b id="kDias">–</b><span>dias com serviço</span></div>
+        <div class="kpi"><b id="kKm">–</b><span>km com serviço</span></div>
+        
+      </div>
+    </div>
+
+    <section>
+      <h2>Dados <small id="lotesInfo"></small></h2>
+      <div class="row">
+        <p class="hint" style="margin:0">Consulta: mapa, filtros e relatórios. Exportar dados e enviar fotos são do administrador.</p>
+      </div>
+      <p class="hint" id="procInfo"></p>
+    </section>
+
+    <section>
+      <h2>Filtros</h2>
+      <div class="row">
+        <label class="f">De<input type="date" id="fDe"></label>
+        <label class="f">Até<input type="date" id="fAte"></label>
+      </div>
+      <div class="row">
+        <label class="f">Mês<select id="fMes"><option value="">Todos</option></select></label>
+        <label class="f">Lote / ZIP<select id="fLote"><option value="">Todos</option></select></label>
+      </div>
+      <div class="row">
+        <div class="f">Bloco
+          <div class="multi" id="fBlocos">
+            <button type="button" class="multi-btn" id="fBlocosBtn" aria-haspopup="true" aria-expanded="false" aria-controls="fBlocosMenu">
+              <span class="multi-val" id="fBlocosVal">Todos</span><span aria-hidden="true">▾</span></button>
+            <div class="multi-menu" id="fBlocosMenu" role="group" aria-label="Blocos" hidden></div>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px"><div class="chips" id="dias"></div></div>
+      <p class="hint">A data usada é a do <b>carimbo da foto</b> (ou EXIF da câmera), nunca a data do arquivo.</p>
+    </section>
+
+    
+
+    <section>
+      <h2>Eixo da rodovia</h2>
+      <div class="list" id="blocosList" style="max-height:none;gap:4px"></div>
+      
+    </section>
+
+    <section>
+      <h2>Intervenções ao longo do trecho <small><select id="binKm" style="width:auto;padding:2px 4px;font-size:11.5px"><option value="1">1 km</option><option value="2" selected>2 km</option><option value="5">5 km</option></select></small></h2>
+      <div class="chart" id="chKm"></div>
+      <p class="hint" id="chKmNota"></p>
+      <div class="det" id="detTrecho" role="region" aria-label="Detalhes do intervalo selecionado" hidden></div>
+    </section>
+
+    <section>
+      <h2>Por dia</h2>
+      <div class="chart" id="chDia"></div>
+    </section>
+
+    
+
+    <div class="foot">Retrato dos dados de 07/11/2026. 
+      Cada ponto é um buraco tapado; o calor mostra onde houve mais intervenções.
+      
+      <details class="creditos">
+        <summary>Créditos e fontes</summary>
+        <ul>
+          <li>Mapa de ruas: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">Colaboradores do OpenStreetMap</a> (ODbL)</li>
+          <li>Imagens de satélite: <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> — Esri, Maxar, Earthstar Geographics e comunidade GIS</li>
+          <li>Mapa interativo: <a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a> (BSD-2) e Leaflet.heat (MIT)</li>
+          <li>Fontes: Overpass e Overpass Mono (SIL Open Font License)</li>
+          <li>Eixo e estacas: KMZ dos Blocos 2, 3 e 4</li>
+          <li>Marca: Neovia Engenharia — Manual Básico de Marca NE-0001</li>
+        </ul>
+      </details>
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+<div class="lightbox" id="lb"><img alt=""></div>
+<div class="toast" id="toast"></div>
+<script src="recursos/leaflet.js"></script>
+<script src="recursos/leaflet-heat.js"></script>
+<script src="dados.js?v=18257045feeb"></script>
+<script src="firebase-config.js?v=18257045feeb"></script>
+<script src="recursos/ajustes.js?v=18257045feeb"></script>
+<script src="recursos/relatorio.js?v=18257045feeb"></script>
+</body>
+</html>
