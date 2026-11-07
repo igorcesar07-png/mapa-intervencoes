@@ -263,12 +263,11 @@ def test_visualizador_nao_ve_restritos(app):
         assert f"{i:016x}" not in texto
     for campo in ("anomalia", "motivo", "classe", "texto_ocr", "dup", "travado"):
         assert f'"{campo}"' not in texto, campo
-    # CSV com e sem filtros
+    # exportar dados é só do administrador: o visualizador é barrado no servidor, com ou sem filtros
     for q in ("", "?lote=L1", "?dia=2026-10-29", "?bloco=2", "?mes=2026-10"):
-        csvtxt = v.get("/api/exportar.csv" + q).get_data(as_text=True)
-        assert not any(n in csvtxt for n in RESTRITOS), q
-        assert "anomalia" not in csvtxt.split("\r\n")[0]
-    assert "VALIDO_TAPADO.jpg" in v.get("/api/exportar.csv").get_data(as_text=True)
+        r = v.get("/api/exportar.csv" + q)
+        assert r.status_code == 403, q
+        assert not any(n in r.get_data(as_text=True) for n in RESTRITOS | VALIDOS), q
     # fotos restritas: 404 (nem revela que existem)
     for i in range(2, 10):
         assert v.get(f"/api/fotos/{i:016x}/miniatura").status_code == 404
@@ -276,7 +275,7 @@ def test_visualizador_nao_ve_restritos(app):
     assert v.get(f"/api/fotos/{1:016x}/miniatura").status_code == 200
     # a página do visualizador não traz as seções do administrador
     html = v.get("/").get_data(as_text=True)
-    assert "anomList" not in html and "semGrid" not in html and 'href="/admin"' not in html
+    assert "anomList" not in html and "semGrid" not in html and 'href="/admin"' not in html and 'id="btnCsv"' not in html
 
     # administrador vê tudo, com o motivo de cada restrição
     a = entrar(app, "adm@teste.com", SENHA_ADM)
@@ -390,7 +389,7 @@ def test_csv_com_varios_blocos(app):
     con.execute("UPDATE parametros SET valor=CAST(valor AS INTEGER)+1 WHERE chave='versao_dados'")
     con.close()
     visao.invalidar()
-    v = entrar(app, "vis@teste.com", SENHA_VIS)
+    v = entrar(app, "adm@teste.com", SENHA_ADM)
     so2 = v.get("/api/exportar.csv?blocos=2").get_data(as_text=True)
     ambos = v.get("/api/exportar.csv?blocos=2,4").get_data(as_text=True)
     so4 = v.get("/api/exportar.csv?bloco=4").get_data(as_text=True)      # forma antiga

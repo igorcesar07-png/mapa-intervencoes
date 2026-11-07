@@ -127,7 +127,7 @@ def api_imagem(foto_id):
 
 
 @bp.get("/api/exportar.csv")
-@requer_login
+@requer_admin          # exportar dados é só do administrador (o visualizador recebe 403)
 def api_csv():
     filtros = {k: (request.args.get(k) or "").strip()[:40] for k in ("de", "ate", "mes", "lote", "dia")}
     # vários blocos: "blocos=2,3" (o antigo "bloco=2" continua aceito)

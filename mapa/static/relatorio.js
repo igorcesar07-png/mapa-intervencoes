@@ -28,7 +28,7 @@ function diaValido(d){
 const diaDe = r => { const d = (r && r.data || "").slice(0,10); return diaValido(d) ? d : ""; };
 
 /* ============================================================ estado */
-const S = { blocosSel: new Set(), todos: [], porId: new Map(), derivado: new Map(), grupos: [], tracado: {blocos:{}}, filtroDia: "", versao: null, params: {}, temEstacas: false };
+const S = { blocosSel: new Set(), todos: [], porId: new Map(), derivado: new Map(), grupos: [], tracado: {blocos:{}}, filtroDia: "", versao: null, params: {}, temEstacas: false, faixas: new Map(), det: null };
 
 async function carregar(enquadrar){
   const r = await fetch("/api/relatorio", {credentials:"same-origin", cache:"no-store"});
@@ -523,6 +523,7 @@ function barras(el, dados, opts={}){
 function graficoKm(regs){
   const el = $("#chKm"), nota = $("#chKmNota");
   const bin = +$("#binKm").value;
+  S.faixas = new Map();
   const idsB = blocosAtivos().filter(id => S.tracado.blocos[id]).sort(ordBloco);
   nota.innerHTML = "";
   if (!idsB.length || !S.temEstacas){
@@ -555,20 +556,99 @@ function graficoKm(regs){
       c.comp = Math.max(isFinite(a) ? (b - a) / 1000 : 0, bin / 2);
       c.taxa = c.v / c.comp; c.nivel = c.v ? nivelDe(c.taxa) : NIVEIS[0];
     });
-    barras(area, cont.map(c => ({rot:String(Math.round(c.ini)), v:c.v, cor:c.nivel.cor, regs:c.regs, ini:c.ini,
+    barras(area, cont.map((c, k) => ({rot:String(Math.round(c.ini)), v:c.v, cor:c.nivel.cor, regs:c.regs, ini:c.ini, k,
         titulo:`${rod} km ${fmtNum(c.ini,0)}–${fmtNum(c.ini+bin,0)}: ${c.v} buraco(s) · ${fmtTaxa(c.taxa)} por km · intensidade ${c.nivel.nome.toLowerCase()}`})),
       {onClick: d => {
+        abrirDetalhe(rod, d.k);
         if (d.regs.length) return mapa.flyToBounds(L.latLngBounds(d.regs.map(r=>[r.lat,r.lon])).pad(.4), {maxZoom:16, duration:.8});
         const p = ids.flatMap(id => S.tracado.blocos[id].pts).filter(p => p[2] != null && p[2]/1000 >= d.ini && p[2]/1000 <= d.ini+bin).map(p=>[p[0],p[1]]);
         if (p.length) mapa.flyToBounds(L.latLngBounds(p), {duration:.8});
       }});
+    S.faixas.set(rod, {ids, bin, cont, area});
     const vazios = cont.filter(c => !c.v).length, top = [...cont].sort((a,b)=>b.v-a.v)[0];
     let run = 0, best = {n:0}; cont.forEach((c,k) => { run = c.v ? 0 : run+1; if (run > best.n) best = {n:run, fim:k}; });
     txt.innerHTML = `<b>${meus.length}</b> buraco(s) tapado(s). Mais intervenções: <b>km ${fmtNum(top.ini,0)}–${fmtNum(top.ini+bin,0)}</b> (${top.v}). ${vazios} de ${nb} faixas de ${bin} km sem nenhuma`
       + (best.n ? `; maior trecho sem nenhuma: km ${fmtNum(cont[best.fim-best.n+1].ini,0)}–${fmtNum(cont[best.fim].ini+bin,0)}` : "") + ".";
   });
-  nota.innerHTML = `Cor da barra = intensidade (buracos tapados por km), a mesma da legenda do mapa. Buracos projetados na estaca mais próxima do KMZ. Clique numa barra para ir ao trecho.`;
+  nota.innerHTML = `Cor da barra = intensidade (buracos tapados por km), a mesma da legenda do mapa. Buracos projetados na estaca mais próxima do KMZ. Clique numa barra para ver os detalhes do intervalo e ir ao trecho.`;
+  // o painel aberto acompanha os filtros; trocar o tamanho da faixa fecha o painel
+  if (S.det){ if (S.det.bin === bin && S.faixas.has(S.det.rod)) abrirDetalhe(S.det.rod, S.det.k, true); else fecharDetalhe(); }
 }
+
+/* ============================================================ detalhes de uma barra do resumo por km */
+const fmtDia = d => d ? `${d.slice(8,10)}/${d.slice(5,7)}` : "—";
+const contar = arr => { const m = new Map(); for (const v of arr) m.set(v, (m.get(v)||0)+1); return [...m.entries()]; };
+function fecharDetalhe(){
+  S.det = null;
+  const el = $("#detTrecho"); el.hidden = true; el.innerHTML = "";
+  document.querySelectorAll("#chKm rect.sel").forEach(r => r.classList.remove("sel"));
+}
+function abrirDetalhe(rod, k, manterRolagem){
+  const F = S.faixas.get(rod); if (!F || !F.cont[k]) return fecharDetalhe();
+  const c = F.cont[k], fim = c.ini + F.bin, el = $("#detTrecho");
+  S.det = {rod, k, bin:F.bin};
+  document.querySelectorAll("#chKm rect.sel").forEach(r => r.classList.remove("sel"));
+  const rect = F.area.querySelector(`rect[data-i="${k}"]`); if (rect) rect.classList.add("sel");
+  const der = id => S.derivado.get(id) || {};
+  const grupoDe = new Map(S.grupos.map(g => [g.rep, g]));
+  const regs = [...c.regs].sort((a, b) => (der(a.id).est ?? 0) - (der(b.id).est ?? 0));
+  const ests = regs.map(r => der(r.id).est).filter(v => v != null);
+  const blocos = [...new Set(regs.map(r => der(r.id).bloco).filter(Boolean))].sort(ordBloco);
+  const blocosEixo = F.ids.filter(id => S.tracado.blocos[id].pts.some(p => p[2] != null && p[2]/1000 >= c.ini && p[2]/1000 < fim));
+  const dias = contar(regs.map(r => diaDe(r)).filter(Boolean)).sort((a, b) => a[0].localeCompare(b[0]));
+  const lotes = contar(regs.map(r => r.lote).filter(Boolean)).sort((a, b) => b[1] - a[1]);
+  const linha = (rot, val) => `<div><dt>${rot}</dt><dd>${val}</dd></div>`;
+  // administrador: o que mais caiu neste intervalo (mesmos filtros de data, lote e bloco)
+  let extraAdm = "";
+  if (ADMIN){
+    const f = filtros();
+    const noIntervalo = S.todos.filter(r => { const d = der(r.id); return d.x != null && d.x >= c.ini && d.x < fim && F.ids.includes(d.bloco) && passa(r, f); });
+    const inc = noIntervalo.filter(r => !r._dup && r.classe !== "outro" && der(r.id).anomalia);
+    const semTap = S.grupos.filter(g => !g.tapado && noIntervalo.some(r => r.id === g.rep));
+    const fotos = regs.reduce((s, r) => s + ((grupoDe.get(r.id) || {}).fotos || [r.id]).length, 0);
+    extraAdm = linha("Fotos dos buracos", `${fotos} (antes e depois do mesmo buraco)`)
+      + linha("Inconsistências", inc.length ? `${inc.length} — ${[...new Set(inc.map(r => der(r.id).motivo))].slice(0,3).map(esc).join("; ")}` : "nenhuma")
+      + linha("Buracos sem foto de tapado", String(semTap.length));
+  }
+  // campos que faltam: os que não existem no sistema e os que vieram vazios neste intervalo
+  const vazio = (campo, nome) => { const n = regs.filter(r => r[campo] == null || r[campo] === "").length; return n ? `${nome} vazio em ${n} de ${regs.length}` : ""; };
+  const vazios = regs.length ? [vazio("local", "local"), vazio("sentido", "sentido"), vazio("km", "km escrito no carimbo"),
+    regs.some(r => r.data_fonte && r.data_fonte !== "carimbo" && r.data_fonte !== "exif") ? `data tirada do nome do arquivo em ${regs.filter(r => r.data_fonte && !["carimbo","exif"].includes(r.data_fonte)).length}` : ""].filter(Boolean) : [];
+  el.innerHTML = `
+    <div class="det-cab">
+      <div><span class="det-eyebrow">Intervalo selecionado</span><h3>${esc(rod)} · km ${fmtNum(c.ini,0)}–${fmtNum(fim,0)}</h3></div>
+      <button class="btn" type="button" id="detFechar" aria-label="Fechar detalhes e voltar ao relatório">✕ Voltar ao relatório</button>
+    </div>
+    <dl class="det-resumo">
+      ${linha("Rodovia", esc(rod))}
+      ${linha("Bloco(s)", blocos.length ? blocos.map(b => "Bloco " + esc(b)).join(", ") : (blocosEixo.length ? blocosEixo.map(b => "Bloco " + esc(b)).join(", ") + " (eixo)" : "—"))}
+      ${linha("Intervalo", `km ${fmtNum(c.ini,0)} a ${fmtNum(fim,0)} · faixa de ${F.bin} km`)}
+      ${linha("Estacas com buraco", ests.length ? `${fmtEst(Math.min(...ests))} a ${fmtEst(Math.max(...ests))}` : "—")}
+      ${linha("Eixo no intervalo", `${fmtNum(c.comp, 1)} km`)}
+      ${linha("Buracos tapados", `<b>${c.v}</b>`)}
+      ${linha("Intensidade", `<span class="det-nivel"><i style="background:${c.nivel.cor}"></i>${esc(c.nivel.nome)} · ${fmtTaxa(c.taxa)} por km</span>`)}
+      ${linha("Dias", dias.length ? dias.map(([d, n]) => `${fmtDia(d)} (${n})`).join(", ") : "—")}
+      ${linha("Lote / ZIP", lotes.length ? lotes.map(([l, n]) => `${esc(l)} (${n})`).join(", ") : "—")}
+      ${extraAdm}
+    </dl>
+    ${regs.length ? `<h4 class="det-sub">Buracos neste intervalo <small>clique para ver no mapa</small></h4>
+    <ol class="det-lista">${regs.map(r => { const d = der(r.id), g = grupoDe.get(r.id);
+      return `<li tabindex="0" data-id="${esc(r.id)}"><img src="${mini(r.id)}" alt="" loading="lazy">
+        <div><b>${d.est != null ? "Estaca " + fmtEst(d.est) : "Sem estaca"}${d.bloco ? " · Bloco " + esc(d.bloco) : ""}</b>
+        <span>${fmtData(r.data)}${r.lote ? " · " + esc(r.lote) : ""}${d.dist != null ? ` · ${fmtNum(d.dist)} m do eixo` : ""}</span>
+        <span>${[r.local, r.sentido].filter(Boolean).map(esc).join(" · ")}${ADMIN && g ? `${r.local || r.sentido ? " · " : ""}${g.fotos.length} foto(s)` : ""}</span>
+        <span class="det-arq">${esc(r.arquivo)}</span></div></li>`; }).join("")}</ol>`
+    : `<p class="vazio">Nenhum buraco tapado neste intervalo com os filtros atuais.</p>`}
+    <p class="det-falta"><b>O que os dados não informam:</b> o motivo (causa ou tipo do defeito), a dimensão ou área do reparo, o material e a equipe não são registrados pelas fotos nem pelo sistema.${vazios.length ? ` Neste intervalo: ${vazios.join("; ")}.` : ""}</p>`;
+  el.hidden = false;
+  $("#detFechar").onclick = () => { fecharDetalhe(); $("#chKm").scrollIntoView({block:"nearest"}); };
+  el.querySelectorAll(".det-lista li").forEach(li => {
+    li.onclick = () => focar(li.dataset.id);
+    li.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); focar(li.dataset.id); } };
+  });
+  if (!manterRolagem) el.scrollIntoView({block:"nearest", behavior:"smooth"});
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && S.det && !$("#lb").classList.contains("on")) fecharDetalhe(); });
 function graficoDia(regs){
   const c = new Map();
   for (const r of regs.filter(Boolean)){ const d = diaDe(r); if (d) c.set(d, (c.get(d)||0)+1); }
@@ -583,7 +663,7 @@ function graficoDia(regs){
 for (const id of ["#fDe","#fAte","#fMes","#fLote"]) $(id).addEventListener("change", () => { S.filtroDia = ""; montarFiltros(); desenhar(); });
 for (const id of ["#lCalor","#lPontos","#lAnom","#oSoAntes","#lTracado","#lKm","#lSeg","#rRaio","#rMax","#binKm"]){ const el = $(id); if (el) el.addEventListener("input", desenhar); }
 $("#oFundo").addEventListener("input", aplicarFundo);
-$("#btnCsv").onclick = () => {
+if ($("#btnCsv")) $("#btnCsv").onclick = () => {
   const f = filtros(), q = new URLSearchParams(Object.entries({...f, blocos:f.blocos.join(",")}).filter(([,v]) => v));
   location.href = "/api/exportar.csv" + (q.toString() ? "?" + q : "");
 };
