@@ -14,12 +14,7 @@
   const abrir = (k, buf) => crypto.subtle.decrypt({name:"AES-GCM", iv:buf.slice(0, 12)}, k, buf.slice(12));
   let resolver;
   window.DADOS_PRONTO = new Promise(r => resolver = r);
-  window.abrirFotoCifrada = async id => {
-    try{
-      const buf = new Uint8Array(await (await fetch(`fotos/x/${encodeURIComponent(id)}.bin?v=${V}`)).arrayBuffer());
-      return URL.createObjectURL(new Blob([await abrir(chave, buf)], {type:"image/jpeg"}));
-    }catch(e){ return null; }
-  };
+  window.decifrar = buf => abrir(chave, buf);
   document.getElementById("cofreForm").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("cofreMsg"), btn = document.getElementById("cofreBtn");

@@ -17,7 +17,7 @@ INST, OUT = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 ADM, VIS, SENHA_SITE = (sys.argv[3], sys.argv[4]), (sys.argv[5], sys.argv[6]), sys.argv[7]
 ITER = 600_000
 shutil.rmtree(OUT, ignore_errors=True)
-for d in ("fotos/m", "fotos/g", "fotos/x", "recursos"): (OUT / d).mkdir(parents=True)
+for d in ("fotos", "recursos"): (OUT / d).mkdir(parents=True)
 
 app = create_app(Config(dados_dir=INST), iniciar_worker=False)
 def cliente(email, senha):
@@ -41,17 +41,33 @@ aes = AESGCM(chave)
 def cifrar(b):
     iv = os.urandom(12); return iv + aes.encrypt(iv, b, None)
 
-mini_cif = {}
+# Poucos arquivos grandes (o GitHub Pages trava ao sincronizar milhares de arquivos):
+#   miniaturas dentro dos dados; fotos em pacotes de ~8 MB lidos por trecho (Range).
+#   fotos/p*.bin = fotos públicas; fotos/x*.bin = fotos restritas, cada uma cifrada separadamente.
+class Pacotes:
+    def __init__(self, pref, lim=8 * 1024 * 1024):
+        self.pref, self.lim, self.n, self.buf, self.idx = pref, lim, 0, bytearray(), {}
+    def add(self, i, dados):
+        if self.buf and len(self.buf) + len(dados) > self.lim: self.fechar()
+        self.idx[i] = [self.n, len(self.buf), len(dados)]; self.buf += dados
+    def fechar(self):
+        if self.buf: (OUT / f"fotos/{self.pref}{self.n}.bin").write_bytes(bytes(self.buf)); self.n += 1; self.buf = bytearray()
+pub, cif = Pacotes("p"), Pacotes("x")
+mini_pub, mini_cif = {}, {}
 for r in rel_a["registros"]:
     i = r["id"]
     m = ca.get(f"/api/fotos/{i}/miniatura"); g = ca.get(f"/api/fotos/{i}/imagem")
+    uri = "data:image/jpeg;base64," + base64.b64encode(m.data).decode() if m.status_code == 200 else None
     if i in publicos:
-        if m.status_code == 200: (OUT / f"fotos/m/{i}.jpg").write_bytes(m.data)
-        if g.status_code == 200: (OUT / f"fotos/g/{i}.jpg").write_bytes(reduzir(g.data))
+        if uri: mini_pub[i] = uri
+        if g.status_code == 200: pub.add(i, reduzir(g.data))
     else:
-        if m.status_code == 200: mini_cif[i] = "data:image/jpeg;base64," + base64.b64encode(m.data).decode()
-        if g.status_code == 200: (OUT / f"fotos/x/{i}.bin").write_bytes(cifrar(reduzir(g.data)))
-pacote = json.dumps({"relatorio": rel_a, "mini": mini_cif}, ensure_ascii=False, separators=(",", ":")).encode()
+        if uri: mini_cif[i] = uri
+        if g.status_code == 200: cif.add(i, cifrar(reduzir(g.data)))
+pub.fechar(); cif.fechar()
+VERSAO = sal.hex()[:12]
+pacote = json.dumps({"relatorio": rel_a, "mini": {**mini_pub, **mini_cif}, "g": pub.idx, "gx": cif.idx, "versao": VERSAO},
+                    ensure_ascii=False, separators=(",", ":")).encode()
 (OUT / "admin.bin").write_bytes(b"MAPA1" + sal + cifrar(pacote))
 (OUT / "admin.json").write_text(json.dumps({"iter": ITER, "sal": base64.b64encode(sal).decode()}))
 print("públicas", len(publicos), "restritas", len(rel_a["registros"]) - len(publicos), "pacote", len(pacote))
@@ -63,9 +79,21 @@ def troca(a, b):
     assert js.count(a) == 1, a[:60]; js = js.replace(a, b)
 troca('const CSRF = document.querySelector(\'meta[name="csrf"]\').content;', '')
 troca('const mini = id => `/api/fotos/${encodeURIComponent(id)}/miniatura`;',
-      'const mini = id => (window.DADOS_MAPA && DADOS_MAPA.mini && DADOS_MAPA.mini[id]) || `fotos/m/${encodeURIComponent(id)}.jpg`;')
-troca('const grande = id => `/api/fotos/${encodeURIComponent(id)}/imagem`;',
-      'const grande = id => (window.DADOS_MAPA && DADOS_MAPA.mini && DADOS_MAPA.mini[id]) ? `#cifrada:${id}` : `fotos/g/${encodeURIComponent(id)}.jpg`;')
+      'const mini = id => (window.DADOS_MAPA && DADOS_MAPA.mini && DADOS_MAPA.mini[id]) || "";')
+troca('const grande = id => `/api/fotos/${encodeURIComponent(id)}/imagem`;', '''const grande = id => `#foto:${id}`;
+/* foto em tamanho maior: um trecho de um pacote (fotos/p*.bin públicas, fotos/x*.bin cifradas) */
+window.abrirFoto = async id => {
+  const D = window.DADOS_MAPA || {}, cifrada = !!(D.gx && D.gx[id]), ref = cifrada ? D.gx[id] : (D.g && D.g[id]);
+  if (!ref) return null;
+  const [n, ini, tam] = ref;
+  try{
+    const r = await fetch(`fotos/${cifrada ? "x" : "p"}${n}.bin?v=${D.versao}`, {headers:{Range:`bytes=${ini}-${ini + tam - 1}`}});
+    let buf = new Uint8Array(await r.arrayBuffer());
+    if (r.status !== 206) buf = buf.slice(ini, ini + tam);
+    if (cifrada) buf = new Uint8Array(await window.decifrar(buf));
+    return URL.createObjectURL(new Blob([buf], {type:"image/jpeg"}));
+  }catch(e){ return null; }
+};''')
 troca('''  const r = await fetch("/api/relatorio", {credentials:"same-origin", cache:"no-store"});
   if (r.status === 401){ location.href = "/login"; return; }
   if (!r.ok){ toast("Não foi possível carregar os dados. Recarregue a página."); return; }
@@ -73,7 +101,7 @@ troca('''  const r = await fetch("/api/relatorio", {credentials:"same-origin", c
 troca('''  if (img){ $("#lb img").src = img.dataset.full; $("#lb").classList.add("on"); return; }''',
       '''  if (img){
     const f = img.dataset.full;
-    if (f.startsWith("#cifrada:")){ $("#lb img").src = img.src; $("#lb").classList.add("on"); window.abrirFotoCifrada(f.slice(9)).then(u => { if (u) $("#lb img").src = u; }); return; }
+    if (f.startsWith("#foto:")){ $("#lb img").src = img.src; $("#lb").classList.add("on"); window.abrirFoto(f.slice(6)).then(u => { if (u) $("#lb img").src = u; }); return; }
     $("#lb img").src = f; $("#lb").classList.add("on"); return;
   }''')
 troca('''if ($("#btnCsv")) $("#btnCsv").onclick = () => {
@@ -105,7 +133,6 @@ assert "/api/" not in js.replace('"/api/versao"', "")
 (OUT / "recursos/relatorio.js").write_text(js)
 
 quando = datetime.now().strftime("%d/%m/%Y")
-VERSAO = sal.hex()[:12]
 def pagina(html, admin):
     html = re.sub(r'<meta name="csrf"[^>]*>\n', '', html)
     html = re.sub(r'\s*<div class="conta">.*?</div>\n', '\n', html, count=1, flags=re.S)
@@ -145,7 +172,8 @@ def pagina(html, admin):
     return html
 (OUT / "index.html").write_text(pagina(html_v, False))
 (OUT / "admin.html").write_text(pagina(html_a, True))
-(OUT / "dados.js").write_text("window.DADOS_MAPA = " + json.dumps({"relatorio": rel_v}, ensure_ascii=False, separators=(",", ":")) + ";")
+(OUT / "dados.js").write_text("window.DADOS_MAPA = " + json.dumps({"relatorio": rel_v, "mini": mini_pub, "g": pub.idx, "versao": VERSAO},
+                                                                   ensure_ascii=False, separators=(",", ":")) + ";")
 shutil.copy(st / "vendor/leaflet/leaflet.css", OUT / "recursos/leaflet.css")
 shutil.copytree(st / "vendor/leaflet/images", OUT / "recursos/images")
 shutil.copy(st / "vendor/leaflet/leaflet.js", OUT / "recursos/leaflet.js")
