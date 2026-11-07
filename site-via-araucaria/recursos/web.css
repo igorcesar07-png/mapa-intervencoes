@@ -1,0 +1,142 @@
+/* Acréscimos da versão web: barra da conta, papel e páginas de login/painel */
+.conta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink-2);margin-bottom:12px;flex-wrap:wrap}
+.conta .papel{font-weight:600;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--panel-2);color:var(--ink-2)}
+.conta .papel.adm{background:var(--accent-soft);color:var(--accent)}
+.conta .quem{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conta a,.conta button{color:var(--ink-2);background:none;border:0;padding:0;font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.conta a:hover,.conta button:hover{color:var(--ink)}
+.conta form{margin:0}
+a.btn{text-decoration:none;display:inline-block}
+.bloco{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 8px;border-radius:8px;background:var(--panel-2)}
+.bloco i{width:14px;height:4px;border-radius:2px;flex:none}
+.bloco span{color:var(--ink-2);font-family:var(--mono);font-size:11.5px}
+.kmlbl{font:600 8.5px/1.15 var(--mono);color:#fff;background:rgba(20,22,26,.82);padding:0 3px;border-radius:2px;white-space:nowrap;transform:translate(-50%,-50%);display:inline-block;pointer-events:none}
+.pp .fotos{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px}
+.pp .fotos figure{margin:0;position:relative}
+.pp .fotos img{aspect-ratio:4/3;object-fit:cover;margin:0}
+.pp .fotos figcaption{position:absolute;left:3px;bottom:3px;font:600 9.5px var(--sans);color:#fff;background:rgba(0,0,0,.65);padding:1px 4px;border-radius:3px}
+.grid-th figcaption.mot{white-space:normal;line-height:1.2}
+.btn:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width: 820px){ aside{transform:translateY(calc(100% - 168px))} aside.open{transform:none} .leaflet-bottom{bottom:168px} }
+/* dica com a foto do ponto */
+.leaflet-tooltip.dica-foto{padding:6px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+.leaflet-tooltip.dica-foto::before{display:none}
+.dica{display:flex;flex-direction:column;gap:2px;width:220px;font:12px/1.35 var(--sans);white-space:normal}
+.dica-img{width:220px;height:165px;object-fit:cover;border-radius:6px;background:var(--panel-2);display:block;margin-bottom:4px}
+.dica-sem{width:220px;height:80px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--panel-2);color:var(--ink-2);font-weight:600;margin-bottom:4px}
+.dica span{color:var(--ink-2)}
+.dica-arq{font:10.5px var(--mono);word-break:break-all}
+/* resumo por km: um bloco por rodovia; mensagens de vazio */
+.ch-rod+.ch-rod{margin-top:14px}
+.ch-tit{margin:0 0 6px;font-size:12.5px;font-weight:600}
+.ch-tit small{font-weight:400;color:var(--ink-3)}
+.ch-nota{margin-top:4px}
+.vazio{margin:4px 0;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;color:var(--ink-2);font-size:12.5px;background:var(--panel-2)}
+/* o mapa de calor é só visual: não pode capturar o mouse dos pontos (dica e clique) */
+.leaflet-heatmap-layer{pointer-events:none}
+/* "Ruas (escuro)": os mesmos tiles do OpenStreetMap escurecidos no navegador (sem pedido extra) */
+.leaflet-tile-pane .tiles-escuro{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6)}
+.leaflet-container .leaflet-control-attribution{font-size:10.5px;max-width:calc(100vw - 24px);white-space:normal}
+/* ---------- hierarquia visual: fundo discreto, intervenções em destaque ---------- */
+#map[data-fundo="escuro"] .leaflet-tile-pane .tiles-escuro{filter:invert(1) hue-rotate(180deg) brightness(.72) contrast(.85) saturate(.25)}
+#map[data-fundo="ruas"] .leaflet-tile-pane .leaflet-layer{filter:grayscale(.9) contrast(.82) brightness(1.04)}
+#map[data-fundo="sat"] .leaflet-tile-pane .leaflet-layer{filter:grayscale(.55) brightness(.62) contrast(.95)}
+/* o calor vira apoio: mais transparente, sem esconder os trechos */
+.leaflet-heatmap-layer{opacity:.45}
+/* rótulos de km sempre legíveis por cima dos trechos */
+.kmlbl{box-shadow:0 0 0 1px rgba(255,255,255,.35);letter-spacing:-.02em}
+/* rótulo deslocado para não encostar no vizinho: uma linha fina liga ao ponto da estaca */
+.kmlbl-desl{position:relative}
+.kmlbl-desl::after{content:"";position:absolute;left:50%;width:1px;background:rgba(20,22,26,.7)}
+.kmlbl-desl[data-lado="c"]::after{top:100%;height:var(--d)}
+.kmlbl-desl[data-lado="b"]::after{bottom:100%;height:var(--d)}
+/* legenda */
+.legenda-trechos{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);font:12px/1.35 var(--sans);width:230px;max-width:calc(100vw - 32px);overflow:hidden}
+.legenda-trechos .leg-tit{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:none;padding:8px 10px;font:600 12px var(--sans);color:var(--ink);cursor:pointer;text-align:left}
+.legenda-trechos .leg-corpo{padding:0 10px 8px}
+.leg-item{display:grid;grid-template-columns:30px 1fr auto 22px;align-items:center;gap:6px;padding:2px 0}
+.leg-item i{display:block;width:30px;border-radius:2px;outline:1px solid rgba(0,0,0,.25)}
+.leg-item em{font-style:normal;color:var(--ink-2);font-family:var(--mono);font-size:11px}
+.leg-item small{text-align:right;color:var(--ink-3);font-family:var(--mono);font-size:10.5px}
+.legenda-trechos p{margin:6px 0 0;color:var(--ink-3);font-size:10.5px}
+.dica-trecho{display:flex;flex-direction:column;gap:2px;font:12px/1.35 var(--sans);min-width:190px;white-space:normal}
+.dica-trecho span{color:var(--ink-2)}
+.dica-trecho .nv{display:flex;align-items:center;gap:6px;color:var(--ink)}
+.dica-trecho .nv i{width:18px;height:6px;border-radius:2px;display:inline-block}
+@media (max-width: 820px){ .legenda-trechos{width:200px} }
+/* de longe, inconsistências menores (continuam visíveis, sem cobrir os trechos) */
+#map.zoom-longe .anom-icon{width:10px;height:10px;margin:4px;border-width:1.5px}
+/* filtro de vários blocos */
+.multi{position:relative;margin-top:3px}
+.multi-btn{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-height:33px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-size:13px;color:var(--ink);cursor:pointer;text-align:left}
+.multi-btn:hover{border-color:var(--ink-3)}
+.multi-val{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.multi-chip{background:var(--accent-soft);color:var(--accent);border-radius:99px;padding:1px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+.multi-menu{position:absolute;z-index:1200;left:0;right:0;top:calc(100% + 4px);background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:6px 10px}
+.multi-menu .chk{padding:5px 0}
+.multi-menu .chk:first-child{border-bottom:1px solid var(--line);margin-bottom:2px;padding-bottom:7px}
+/* legenda: marcador de inconsistência (o mesmo do mapa, sem animação) */
+.leg-anom{display:grid;grid-template-columns:30px 1fr auto 22px;align-items:center;gap:6px;padding:4px 0 2px;margin-top:4px;border-top:1px solid var(--line)}
+.leg-anom i{width:11px;height:11px;border-radius:50%;background:var(--bad);border:2px solid #fff;box-shadow:0 0 0 1px rgba(120,10,10,.85);justify-self:center}
+.leg-anom small{text-align:right;color:var(--ink-3);font-family:var(--mono);font-size:10.5px}
+/* resumo por km: barras na cor da intensidade (mesma escala da legenda do mapa) */
+.chart rect.b[style]{stroke:rgba(0,0,0,.22);stroke-width:.6}
+.chart rect.b[style]:hover{opacity:.7}
+/* detalhes de uma barra do resumo por km */
+.chart rect.sel{stroke:var(--ink);stroke-width:1.6;stroke-opacity:1}
+.det{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);padding:12px;display:flex;flex-direction:column;gap:10px}
+.det-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap}
+.det-cab h3{margin:2px 0 0;font-size:14px;font-weight:700;text-wrap:balance}
+.det-eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:600}
+.det-resumo{display:grid;grid-template-columns:1fr;gap:4px;margin:0}
+.det-resumo div{display:grid;grid-template-columns:118px 1fr;gap:8px;font-size:12.5px;line-height:1.4}
+.det-resumo dt{color:var(--ink-3)}
+.det-resumo dd{margin:0;min-width:0;font-variant-numeric:tabular-nums}
+.det-nivel{display:inline-flex;align-items:center;gap:6px}
+.det-nivel i{width:18px;height:6px;border-radius:2px;display:inline-block}
+.det-sub{margin:4px 0 0;font-size:12px;font-weight:600}
+.det-sub small{font-weight:400;color:var(--ink-3)}
+.det-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:320px;overflow:auto}
+.det-lista li{display:flex;gap:8px;align-items:flex-start;padding:5px;border-radius:7px;cursor:pointer;border:1px solid transparent}
+.det-lista li:hover,.det-lista li:focus-visible{background:var(--panel);border-color:var(--line);outline:none}
+.det-lista img{width:56px;height:42px;object-fit:cover;border-radius:5px;flex:none;background:var(--panel)}
+.det-lista div{display:flex;flex-direction:column;min-width:0;font-size:12px;line-height:1.35}
+.det-lista span{color:var(--ink-2)}
+.det-lista .det-arq{font:10.5px var(--mono);color:var(--ink-3);word-break:break-all}
+.det-falta{margin:0;font-size:11.5px;color:var(--ink-2);border-top:1px dashed var(--line);padding-top:8px}
+@media (max-width: 820px){ .det-resumo div{grid-template-columns:100px 1fr} }
+/* tela de senha da área do administrador (GitHub Pages) */
+.cofre{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--bg) 82%, transparent);backdrop-filter:blur(6px);padding:16px}
+.cofre-caixa{width:min(400px,100%);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:20px;display:flex;flex-direction:column;gap:8px}
+.cofre-caixa h1{margin:0;font-size:17px}
+.cofre-caixa p{margin:0;font-size:12.5px;color:var(--ink-2)}
+.cofre-caixa label{font-size:12px;color:var(--ink-2);margin-top:4px}
+.cofre-caixa input{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:14px;color:var(--ink)}
+.cofre-msg{min-height:1.2em}
+.cofre-msg.erro{color:var(--bad)}
+.cofre-acoes{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px}
+.cofre-acoes a{font-size:12.5px;color:var(--ink-2)}
+.cofre-campo{display:flex;flex-direction:column;gap:4px}
+.cofre-campo[hidden]{display:none}
+/* ajustes do administrador (Firebase) */
+.btn-aj{margin-top:6px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:3px 9px;font:600 11.5px var(--sans);cursor:pointer}
+.btn-aj:hover{background:var(--accent);color:var(--accent-ink)}
+.grid-th figure .btn-aj,.pp .fotos figure .btn-aj{margin-top:2px;padding:1px 6px;font-size:10.5px;width:100%}
+.aj-padrao{margin-top:10px;align-items:center}
+.aj-painel{position:fixed;z-index:1600;right:16px;top:16px;bottom:16px;width:360px;max-width:calc(100vw - 32px);overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
+.aj-painel[hidden]{display:none}
+.aj-cab{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.aj-cab h3{margin:2px 0 0;font-size:13px;word-break:break-all}
+.aj-foto{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--panel-2)}
+.aj-sit{margin:0;font-size:12.5px}
+.aj-tag{color:var(--accent);font-weight:600}
+.aj-grupo{display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--line);padding-top:9px}
+.aj-rot{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600}
+.aj-bts,.aj-linha{display:flex;gap:6px;flex-wrap:wrap}
+.aj-bts .btn.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.aj-linha input,.aj-linha select{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:13px;color:var(--ink)}
+.aj-msg{margin:0;font-size:12.5px;min-height:1.2em}
+.aj-msg.ok{color:var(--ok)} .aj-msg.erro{color:var(--bad)}
+@media (max-width: 820px){ .aj-painel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:80dvh} }
+.cofre-caixa{border-top:5px solid var(--va-amarelo,#F6D200)}
+.cofre-logo{height:40px;width:auto;align-self:flex-start;margin:2px 0 10px}

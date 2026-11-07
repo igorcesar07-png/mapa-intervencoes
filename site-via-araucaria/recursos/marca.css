@@ -1,0 +1,71 @@
+/* ==========================================================================
+   Identidade visual Via Araucária
+   - Cores: azul principal #273896 · branco #FFFFFF · grafite #242526
+             amarelo do fundo do logotipo #F6D200 (lido da imagem oficial do logo)
+   - Logotipo: azul em fundo claro; versão negativa (branca) em fundo escuro; ícone: losango
+     azul sobre o amarelo. Sem alterar proporção nem cores.
+   - Tipografia: Overpass (SIL OFL), de desenho geométrico e legível; dados em Overpass Mono.
+   As cores de intensidade do mapa e o vermelho de inconsistência são legenda de dados e não mudam.
+   ========================================================================== */
+:root{
+  --va-azul:#273896; --va-azul-esc:#1C2A73; --va-amarelo:#F6D200; --va-grafite:#242526;
+  --bg:#F3F4F8; --panel:#FFFFFF; --panel-2:#EEF0F6; --line:#D9DCE6; --ink:#242526; --ink-2:#55575B; --ink-3:#6E7076;
+  --accent:#273896; --accent-ink:#FFFFFF; --accent-soft:#E3E6F5; --accent-texto:#273896;
+  --sans:"Overpass",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"Overpass Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161718; --panel:#242526; --panel-2:#2E2F31; --line:#3A3B3D; --ink:#F2F2F3; --ink-2:#B4B6BB; --ink-3:#8E9096;
+    --accent:#4458C8; --accent-ink:#FFFFFF; --accent-soft:#232A4D; --accent-texto:#A9B4F5; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161718; --panel:#242526; --panel-2:#2E2F31; --line:#3A3B3D; --ink:#F2F2F3; --ink-2:#B4B6BB; --ink-3:#8E9096;
+  --accent:#4458C8; --accent-ink:#FFFFFF; --accent-soft:#232A4D; --accent-texto:#A9B4F5; color-scheme:dark;
+}
+body{font-family:var(--sans)}
+/* texto na cor da marca: tom com contraste suficiente em cada tema */
+a,.conta .papel.adm,.multi-chip,.topo nav a.destaque,.foto .lnk,.aj-tag,.btn-aj{color:var(--accent-texto)}
+.btn-aj{border-color:var(--accent-texto)}
+.btn-aj:hover{color:var(--accent-ink)}
+.btn.pri,.btn.pri:hover{color:var(--accent-ink)}
+.btn.pri:hover{background:var(--va-azul-esc);border-color:var(--va-azul-esc)}
+
+/* ---------- logotipo ---------- */
+.marca-topo{display:flex;align-items:center;gap:14px;min-width:0}
+.marca-logo{display:block;height:44px;width:auto;flex:none}
+.marca-logo.marca-escuro{display:none}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .marca-logo.marca-claro{display:none} :root:not([data-theme="light"]) .marca-logo.marca-escuro{display:block} }
+:root[data-theme="dark"] .marca-logo.marca-claro{display:none}
+:root[data-theme="dark"] .marca-logo.marca-escuro{display:block}
+.marca-sep{width:1px;align-self:stretch;background:var(--line);flex:none}
+.marca-produto,.head h1.marca-produto,.topo h1.marca-produto{display:block;margin:0;font:700 15px/1.15 var(--sans);letter-spacing:-.005em;color:var(--ink);text-wrap:balance}
+.marca-produto small{display:block;font-weight:400;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+
+/* ---------- painel lateral do relatório ---------- */
+.head{border-top:5px solid var(--va-amarelo);padding-top:14px}
+.head h1::before{display:none}
+.head .marca-topo{margin-bottom:10px}
+/* grafismo: o losango do símbolo abre cada título */
+section h2{color:var(--ink-2);font-weight:700;letter-spacing:.1em}
+section h2::before{content:"";width:7px;height:7px;background:var(--va-amarelo);box-shadow:0 0 0 1.5px var(--accent);transform:rotate(45deg);border-radius:1px;flex:none;align-self:center;margin:0 2px}
+section h2{justify-content:flex-start;gap:8px}
+section h2 small,section h2 select{margin-left:auto}
+.kpi{border-left:3px solid var(--accent);border-radius:4px 8px 8px 4px}
+.kpi.bad{border-left-color:var(--bad)}
+.kpi b{font-family:var(--mono);font-weight:600}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (max-width: 820px){ .marca-logo{height:34px} .marca-produto{font-size:14px} .head .marca-topo{margin-bottom:6px} }
+
+/* ---------- créditos do mapa: discretos, sempre acessíveis ---------- */
+#map:not(.cred-aberto) .leaflet-control-attribution{display:none}
+.leaflet-container .leaflet-control-attribution{border-radius:6px 0 0 0;background:color-mix(in srgb,var(--panel) 88%,transparent);color:var(--ink-2)}
+.leaflet-container .leaflet-control-attribution a{color:var(--ink-2)}
+.btn-creditos{border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 90%,transparent);color:var(--ink-2);border-radius:99px;padding:2px 9px;font:500 11px var(--sans);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.btn-creditos:hover,.btn-creditos[aria-expanded="true"]{color:var(--ink);border-color:var(--ink-3)}
+.btn-creditos:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.creditos{margin-top:10px;font-size:11.5px;color:var(--ink-3)}
+.creditos summary{cursor:pointer;color:var(--ink-2)}
+.creditos ul{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:3px}
+.creditos a{color:inherit}
