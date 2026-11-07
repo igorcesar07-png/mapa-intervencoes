@@ -1,9 +1,9 @@
 rules_version = '2';
 // Regras do Firestore do Mapa de Intervenções.
-// Troque COLE_AQUI_O_UID pelo "User UID" da conta do administrador (Authentication > Users).
+// Administrador: igordalmolin.eng@gmail.com (UID abaixo). Publicadas no console em 07/11/2026.
 service cloud.firestore {
   match /databases/{db}/documents {
-    function admin() { return request.auth != null && request.auth.uid == "COLE_AQUI_O_UID"; }
+    function admin() { return request.auth != null && request.auth.uid == "Yhx9nZGch7btJ6kZaxoZz3cNLz62"; }
     // ajustes das fotos e camadas padrão: todos leem, só o administrador grava
     match /ajustes/{id} { allow read: if true; allow write: if admin(); }
     match /config/{id}  { allow read: if true; allow write: if admin(); }
