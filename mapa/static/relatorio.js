@@ -19,7 +19,8 @@ const mini = id => `/api/fotos/${encodeURIComponent(id)}/miniatura`;
 const grande = id => `/api/fotos/${encodeURIComponent(id)}/imagem`;
 function toast(msg, ms=3200){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"), ms); }
 // camadas: só o administrador tem o painel; o visualizador usa a configuração padrão
-const PADRAO_CAMADAS = {"#lSeg":true, "#oFundo":true, "#lCalor":true, "#lPontos":true, "#lTracado":true, "#lKm":true};
+// padrão definido pelo administrador em 07/11/2026 (o mesmo do painel do administrador ao abrir)
+const PADRAO_CAMADAS = {"#lSeg":true, "#oFundo":true, "#lCalor":true, "#lPontos":true, "#lAnom":false, "#oSoAntes":true, "#lTracado":false, "#lKm":true};
 const marcado = sel => { const el = $(sel); return el ? el.checked : !!PADRAO_CAMADAS[sel]; };
 const valor = (sel, padrao) => { const el = $(sel); return el ? +el.value : padrao; };
 /* dia "AAAA-MM-DD" que existe no calendário e não está no futuro (o servidor já valida; aqui é defesa) */
@@ -258,7 +259,7 @@ function desenhar(){
   if (calor){ mapa.removeLayer(calor); calor = null; }
   if (marcado("#lCalor") && tapados.length){
     calor = L.heatLayer(tapados.map(g => [g.lat, g.lon, 1]), {
-      radius:valor("#rRaio", 22), blur:Math.round(valor("#rRaio", 22)*0.8), max:valor("#rMax", 3), minOpacity:.35, maxZoom:14,
+      radius:valor("#rRaio", 26), blur:Math.round(valor("#rRaio", 26)*0.8), max:valor("#rMax", 1), minOpacity:.35, maxZoom:14,
       gradient:{.15:"#2b6cb0", .35:"#38b2ac", .55:"#ecc94b", .75:"#ed8936", 1:"#e53e3e"}
     }).addTo(mapa);
   }
