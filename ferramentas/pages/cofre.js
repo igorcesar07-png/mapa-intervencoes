@@ -3,18 +3,20 @@
    sem ela, admin.bin e fotos/x/*.bin são ilegíveis. A chave só existe na memória desta aba. */
 (() => {
   let chave = null;
+  // versão do site: evita misturar arquivos de publicações diferentes guardados em cache
+  const V = (document.currentScript && document.currentScript.dataset.v) || String(Date.now());
   const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-  async function derivar(senha){
-    const p = await (await fetch("admin.json", {cache:"no-store"})).json();
-    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveKey"]);
-    return crypto.subtle.deriveKey({name:"PBKDF2", hash:"SHA-256", salt:b64(p.sal), iterations:p.iter}, base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+  // o "sal" vem do próprio admin.bin (bytes 5 a 20), então senha, sal e dados são sempre da mesma publicação
+  async function derivar(senha, sal, iter){
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha.trim()), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey({name:"PBKDF2", hash:"SHA-256", salt:sal, iterations:iter}, base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
   }
   const abrir = (k, buf) => crypto.subtle.decrypt({name:"AES-GCM", iv:buf.slice(0, 12)}, k, buf.slice(12));
   let resolver;
   window.DADOS_PRONTO = new Promise(r => resolver = r);
   window.abrirFotoCifrada = async id => {
     try{
-      const buf = new Uint8Array(await (await fetch(`fotos/x/${encodeURIComponent(id)}.bin`)).arrayBuffer());
+      const buf = new Uint8Array(await (await fetch(`fotos/x/${encodeURIComponent(id)}.bin?v=${V}`)).arrayBuffer());
       return URL.createObjectURL(new Blob([await abrir(chave, buf)], {type:"image/jpeg"}));
     }catch(e){ return null; }
   };
@@ -23,10 +25,11 @@
     const msg = document.getElementById("cofreMsg"), btn = document.getElementById("cofreBtn");
     btn.disabled = true; msg.textContent = "Conferindo a senha…"; msg.className = "cofre-msg";
     try{
-      const k = await derivar(document.getElementById("cofreSenha").value);
-      const r = await fetch("admin.bin", {cache:"no-store"});
+      const r = await fetch(`admin.bin?v=${V}`, {cache:"no-store"});
       if (!r.ok) throw new Error("rede");
       const tudo = new Uint8Array(await r.arrayBuffer());
+      const p = await (await fetch(`admin.json?v=${V}`, {cache:"no-store"})).json();
+      const k = await derivar(document.getElementById("cofreSenha").value, tudo.slice(5, 21), p.iter);
       let dados;
       try { dados = JSON.parse(new TextDecoder().decode(await abrir(k, tudo.slice(5 + 16)))); }
       catch(_){ msg.textContent = "Senha incorreta. Confira e tente de novo."; msg.className = "cofre-msg erro"; btn.disabled = false; return; }

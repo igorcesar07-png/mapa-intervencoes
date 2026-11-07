@@ -105,6 +105,7 @@ assert "/api/" not in js.replace('"/api/versao"', "")
 (OUT / "recursos/relatorio.js").write_text(js)
 
 quando = datetime.now().strftime("%d/%m/%Y")
+VERSAO = sal.hex()[:12]
 def pagina(html, admin):
     html = re.sub(r'<meta name="csrf"[^>]*>\n', '', html)
     html = re.sub(r'\s*<div class="conta">.*?</div>\n', '\n', html, count=1, flags=re.S)
@@ -120,7 +121,7 @@ def pagina(html, admin):
                   '<a href="./">Sair</a></div>')
         html = re.sub(r'(<div class="head" id="cabecalho">)', r'\1\n      ' + perfil, html, count=1)
         html = re.sub(r'<script src="/recursos/relatorio\.js[^"]*"></script>',
-                      '<script src="recursos/cofre.js"></script>\n<script src="recursos/relatorio.js"></script>', html)
+                      f'<script src="recursos/cofre.js?v={VERSAO}" data-v="{VERSAO}"></script>\n<script src="recursos/relatorio.js?v={VERSAO}"></script>', html)
         assert '<body data-papel="admin">' in html
         html = html.replace('<body data-papel="admin">', '''<body data-papel="admin">
 <div class="cofre" id="cofre" role="dialog" aria-modal="true" aria-labelledby="cofreTit">
@@ -137,7 +138,7 @@ def pagina(html, admin):
         perfil = ('<div class="conta"><span class="papel">Visualizador</span><span class="quem">consulta pública</span>'
                   '<a href="admin.html">Entrar como administrador</a></div>')
         html = re.sub(r'(<div class="head" id="cabecalho">)', r'\1\n      ' + perfil, html, count=1)
-        html = re.sub(r'<script src="/recursos/relatorio\.js[^"]*"></script>', '<script src="dados.js"></script>\n<script src="recursos/relatorio.js"></script>', html)
+        html = re.sub(r'<script src="/recursos/relatorio\.js[^"]*"></script>', f'<script src="dados.js?v={VERSAO}"></script>\n<script src="recursos/relatorio.js?v={VERSAO}"></script>', html)
     html = re.sub(r'(<div class="foot"[^>]*>)', r'\1Retrato dos dados de ' + quando + '. ', html, count=1)
     left = re.findall(r'(?:href|src)="/[^"]*"', html)
     assert not left, left
