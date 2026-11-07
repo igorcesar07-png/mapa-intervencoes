@@ -1,35 +1,28 @@
 /* ==========================================================================
-   Identidade visual Neovia Engenharia
-   Fonte: Manual Básico de Aplicações da Nova Identidade (NE-0001, V1)
-   - Cores institucionais (tons do vetor do manual):
-       vermelho  C0 M100 Y100 K10 · Pantone 485C   #D20A11
-       vermelho  C0 M100 Y100 K40 · Pantone 484C   #9C1006
-       preto     K100 · Pantone Black C            #1D1D1B
-       cinza     K80  · Cool Gray 11C              #575756
-       cinza     K40  · Cool Gray 6C               #B2B2B2
-   - Tipografia institucional: família Interstate (Light/Regular texto, Bold títulos).
-     A Interstate é licenciada; quando não estiver instalada, usa-se a Overpass (SIL OFL),
-     da mesma origem (letreiros de rodovia). Dados: Overpass Mono.
-   - Logotipo: versão preferencial (degradê) em fundo claro; versão negativa em fundo escuro;
-     sem alterar proporção ou cores; área de proteção mínima de 1/3 da altura do símbolo.
+   Identidade visual Via Araucária
+   - Cores: azul principal #273896 · branco #FFFFFF · grafite #242526
+             amarelo do fundo do logotipo #F6D200 (lido da imagem oficial do logo)
+   - Logotipo: azul em fundo claro; versão negativa (branca) em fundo escuro; ícone: losango
+     azul sobre o amarelo. Sem alterar proporção nem cores.
+   - Tipografia: Overpass (SIL OFL), de desenho geométrico e legível; dados em Overpass Mono.
    As cores de intensidade do mapa e o vermelho de inconsistência são legenda de dados e não mudam.
    ========================================================================== */
 :root{
-  --neo-vermelho:#D20A11; --neo-vermelho-esc:#9C1006; --neo-preto:#1D1D1B; --neo-cinza80:#575756; --neo-cinza40:#B2B2B2;
-  --bg:#F2F2F1; --panel:#FFFFFF; --panel-2:#F2F2F1; --line:#DCDCDA; --ink:#1D1D1B; --ink-2:#575756; --ink-3:#767674;
-  --accent:#D20A11; --accent-ink:#FFFFFF; --accent-soft:#FBE3E4; --accent-texto:#B00D13;
-  --sans:"Interstate","Overpass",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --va-azul:#273896; --va-azul-esc:#1C2A73; --va-amarelo:#F6D200; --va-grafite:#242526;
+  --bg:#F3F4F8; --panel:#FFFFFF; --panel-2:#EEF0F6; --line:#D9DCE6; --ink:#242526; --ink-2:#55575B; --ink-3:#6E7076;
+  --accent:#273896; --accent-ink:#FFFFFF; --accent-soft:#E3E6F5; --accent-texto:#273896;
+  --sans:"Overpass",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:"Overpass Mono",ui-monospace,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#121211; --panel:#1D1D1B; --panel-2:#272725; --line:#383836; --ink:#F2F2F1; --ink-2:#B2B2B2; --ink-3:#8E8E8C;
-    --accent:#E1141B; --accent-ink:#FFFFFF; --accent-soft:#3B1517; --accent-texto:#FF6B70; color-scheme:dark;
+    --bg:#161718; --panel:#242526; --panel-2:#2E2F31; --line:#3A3B3D; --ink:#F2F2F3; --ink-2:#B4B6BB; --ink-3:#8E9096;
+    --accent:#4458C8; --accent-ink:#FFFFFF; --accent-soft:#232A4D; --accent-texto:#A9B4F5; color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#121211; --panel:#1D1D1B; --panel-2:#272725; --line:#383836; --ink:#F2F2F1; --ink-2:#B2B2B2; --ink-3:#8E8E8C;
-  --accent:#E1141B; --accent-ink:#FFFFFF; --accent-soft:#3B1517; --accent-texto:#FF6B70; color-scheme:dark;
+  --bg:#161718; --panel:#242526; --panel-2:#2E2F31; --line:#3A3B3D; --ink:#F2F2F3; --ink-2:#B4B6BB; --ink-3:#8E9096;
+  --accent:#4458C8; --accent-ink:#FFFFFF; --accent-soft:#232A4D; --accent-texto:#A9B4F5; color-scheme:dark;
 }
 body{font-family:var(--sans)}
 /* texto na cor da marca: tom com contraste suficiente em cada tema */
@@ -37,11 +30,11 @@ a,.conta .papel.adm,.multi-chip,.topo nav a.destaque,.foto .lnk,.aj-tag,.btn-aj{
 .btn-aj{border-color:var(--accent-texto)}
 .btn-aj:hover{color:var(--accent-ink)}
 .btn.pri,.btn.pri:hover{color:var(--accent-ink)}
-.btn.pri:hover{background:var(--neo-vermelho-esc);border-color:var(--neo-vermelho-esc)}
+.btn.pri:hover{background:var(--va-azul-esc);border-color:var(--va-azul-esc)}
 
 /* ---------- logotipo ---------- */
 .marca-topo{display:flex;align-items:center;gap:14px;min-width:0}
-.marca-logo{display:block;height:38px;width:auto;flex:none}
+.marca-logo{display:block;height:44px;width:auto;flex:none}
 .marca-logo.marca-escuro{display:none}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .marca-logo.marca-claro{display:none} :root:not([data-theme="light"]) .marca-logo.marca-escuro{display:block} }
 :root[data-theme="dark"] .marca-logo.marca-claro{display:none}
@@ -51,21 +44,19 @@ a,.conta .papel.adm,.multi-chip,.topo nav a.destaque,.foto .lnk,.aj-tag,.btn-aj{
 .marca-produto small{display:block;font-weight:400;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
 
 /* ---------- painel lateral do relatório ---------- */
-.head{border-top:3px solid var(--neo-vermelho);padding-top:14px}
+.head{border-top:5px solid var(--va-amarelo);padding-top:14px}
 .head h1::before{display:none}
 .head .marca-topo{margin-bottom:10px}
-/* grafismo do manual: o triângulo vermelho que abre cada título */
+/* grafismo: o losango do símbolo abre cada título */
 section h2{color:var(--ink-2);font-weight:700;letter-spacing:.1em}
-section h2::before{content:"";width:8px;height:8px;background:var(--neo-vermelho);clip-path:polygon(0 0,100% 0,0 100%);flex:none;align-self:center}
+section h2::before{content:"";width:7px;height:7px;background:var(--va-amarelo);box-shadow:0 0 0 1.5px var(--accent);transform:rotate(45deg);border-radius:1px;flex:none;align-self:center;margin:0 2px}
 section h2{justify-content:flex-start;gap:8px}
 section h2 small,section h2 select{margin-left:auto}
-.kpi{border-left:3px solid var(--neo-vermelho);border-radius:4px 8px 8px 4px}
+.kpi{border-left:3px solid var(--accent);border-radius:4px 8px 8px 4px}
 .kpi.bad{border-left-color:var(--bad)}
 .kpi b{font-family:var(--mono);font-weight:600}
-.chip.on{background:var(--neo-preto);border-color:var(--neo-preto);color:#fff}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .chip.on{background:var(--ink);color:var(--panel);border-color:var(--ink)} }
-:root[data-theme="dark"] .chip.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
-@media (max-width: 820px){ .marca-logo{height:28px} .marca-produto{font-size:14px} .head .marca-topo{margin-bottom:6px} }
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+@media (max-width: 820px){ .marca-logo{height:34px} .marca-produto{font-size:14px} .head .marca-topo{margin-bottom:6px} }
 
 /* ---------- créditos do mapa: discretos, sempre acessíveis ---------- */
 #map:not(.cred-aberto) .leaflet-control-attribution{display:none}

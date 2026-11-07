@@ -31,5 +31,5 @@
 .aj-msg{margin:0;font-size:12.5px;min-height:1.2em}
 .aj-msg.ok{color:var(--ok)} .aj-msg.erro{color:var(--bad)}
 @media (max-width: 820px){ .aj-painel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:80dvh} }
-.cofre-caixa{border-top:4px solid var(--neo-vermelho,#D20A11)}
+.cofre-caixa{border-top:5px solid var(--va-amarelo,#F6D200)}
 .cofre-logo{height:40px;width:auto;align-self:flex-start;margin:2px 0 10px}

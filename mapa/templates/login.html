@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Entrar · Mapa de Intervenções · Neovia Engenharia</title>
+<title>Entrar · Mapa de Intervenções · Via Araucária</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('rotas.marca_publica', nome='favicon-32.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('rotas.marca_publica', nome='favicon-180.png') }}">
-<meta name="theme-color" content="#D20A11">
+<meta name="theme-color" content="#273896">
 <style>
-:root{--bg:#F2F2F1;--panel:#FFFFFF;--line:#DCDCDA;--ink:#1D1D1B;--ink-2:#575756;--accent:#D20A11;--accent-esc:#9C1006;--accent-ink:#fff;--bad:#B00D13;--bad-soft:#FBE3E4}
-@media (prefers-color-scheme: dark){:root{--bg:#121211;--panel:#1D1D1B;--line:#383836;--ink:#F2F2F1;--ink-2:#B2B2B2;--accent:#E1141B;--accent-esc:#B00D13;--accent-ink:#fff;--bad:#FF6B70;--bad-soft:#3B1517;color-scheme:dark}}
+:root{--bg:#F3F4F8;--panel:#FFFFFF;--line:#D9DCE6;--ink:#242526;--ink-2:#55575B;--accent:#273896;--accent-esc:#1C2A73;--accent-ink:#fff;--amarelo:#F6D200;--bad:#B3261E;--bad-soft:#FBE4E2}
+@media (prefers-color-scheme: dark){:root{--bg:#161718;--panel:#242526;--line:#3A3B3D;--ink:#F2F2F3;--ink-2:#B4B6BB;--accent:#4458C8;--accent-esc:#3546A8;--accent-ink:#fff;--bad:#FF8A80;--bad-soft:#3B1D1B;color-scheme:dark}}
 *{box-sizing:border-box}
-body{margin:0;min-height:100dvh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:15px/1.45 "Interstate","Overpass",system-ui,sans-serif;padding:24px 16px}
-main{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:12px;padding:26px 24px 28px}
-.logo{display:block;height:46px;width:auto;margin:0 0 22px}
+body{margin:0;min-height:100dvh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:15px/1.45 "Overpass",system-ui,sans-serif;padding:24px 16px}
+main{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-top:5px solid var(--amarelo);border-radius:12px;padding:26px 24px 28px}
+.logo{display:block;height:56px;width:auto;margin:0 0 22px}
 .logo-esc{display:none}
 @media (prefers-color-scheme: dark){.logo-claro{display:none}.logo-esc{display:block}}
 h1{margin:0 0 4px;font-size:19px;font-weight:700;display:flex;align-items:center;gap:9px}
-h1::before{content:"";width:10px;height:10px;background:var(--accent);clip-path:polygon(0 0,100% 0,0 100%)}
+h1::before{content:"";width:9px;height:9px;background:var(--amarelo);transform:rotate(45deg);border-radius:1px;box-shadow:0 0 0 1.5px var(--accent)}
 p{margin:0 0 20px;color:var(--ink-2);font-size:13.5px}
 label{display:block;font-size:13px;color:var(--ink-2);margin-bottom:14px}
 input{display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
@@ -31,8 +31,8 @@ button:hover{background:var(--accent-esc)}
 </head>
 <body>
 <main>
-  <img class="logo logo-claro" src="{{ url_for('rotas.marca_publica', nome='neovia-logo.png') }}" alt="Neovia Engenharia" width="161" height="46">
-  <img class="logo logo-esc" src="{{ url_for('rotas.marca_publica', nome='neovia-logo-negativo.png') }}" alt="Neovia Engenharia" width="148" height="46">
+  <img class="logo logo-claro" src="{{ url_for('rotas.marca_publica', nome='via-araucaria-logo.png') }}" alt="Via Araucária" width="79" height="56">
+  <img class="logo logo-esc" src="{{ url_for('rotas.marca_publica', nome='via-araucaria-logo-negativo.png') }}" alt="Via Araucária" width="79" height="56">
   <h1>Mapa de Intervenções</h1>
   <p>Entre com a conta autorizada pelo administrador.</p>
   {% if erro %}<div class="erro" role="alert">{{ erro }}</div>{% endif %}

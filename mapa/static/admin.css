@@ -98,8 +98,8 @@ td small{color:var(--ink-3);display:block}
 .foto .sug{display:block;margin-top:3px;color:var(--bad, #c62828);font-weight:600}
 .foto .data-form{display:flex;gap:4px;padding:0 8px 8px;flex-wrap:wrap}
 .foto .data-form input{margin:0;flex:1;min-width:0}
-/* identidade Neovia no topo do painel */
-.topo{border-top:3px solid var(--neo-vermelho, #D20A11);align-items:center}
+/* identidade Via Araucária no topo do painel */
+.topo{border-top:4px solid var(--va-amarelo, #F6D200);align-items:center}
 .topo h1::before{display:none}
-.topo .marca-logo{height:32px}
-@media (max-width: 640px){ .topo .marca-logo{height:24px} .topo .marca-sep{display:none} }
+.topo .marca-logo{height:38px}
+@media (max-width: 640px){ .topo .marca-logo{height:30px} .topo .marca-sep{display:none} }

@@ -155,8 +155,8 @@ def pagina(html, admin):
         html = html.replace('<body data-papel="admin">', '''<body data-papel="admin">
 <div class="cofre" id="cofre" role="dialog" aria-modal="true" aria-labelledby="cofreTit">
   <form class="cofre-caixa" id="cofreForm" autocomplete="off">
-    <img class="marca-logo cofre-logo marca-claro" src="recursos/marca/neovia-logo.png" alt="Neovia Engenharia" width="140" height="40">
-    <img class="marca-logo cofre-logo marca-escuro" src="recursos/marca/neovia-logo-negativo.png" alt="Neovia Engenharia" width="129" height="40">
+    <img class="marca-logo cofre-logo marca-claro" src="recursos/marca/via-araucaria-logo.png" alt="Via Araucária" width="56" height="40">
+    <img class="marca-logo cofre-logo marca-escuro" src="recursos/marca/via-araucaria-logo-negativo.png" alt="Via Araucária" width="56" height="40">
     <h1 id="cofreTit">Área do administrador</h1>
     <p>Os dados completos (inconsistências, todas as fotos e exportação) ficam cifrados neste site e só abrem com a senha do administrador.</p>
     <div id="cofreEmailWrap" class="cofre-campo" hidden><label for="cofreEmail">E-mail do administrador</label>
