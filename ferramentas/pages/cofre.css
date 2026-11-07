@@ -1,0 +1,11 @@
+/* tela de senha da área do administrador (GitHub Pages) */
+.cofre{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb, var(--bg) 82%, transparent);backdrop-filter:blur(6px);padding:16px}
+.cofre-caixa{width:min(400px,100%);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:20px;display:flex;flex-direction:column;gap:8px}
+.cofre-caixa h1{margin:0;font-size:17px}
+.cofre-caixa p{margin:0;font-size:12.5px;color:var(--ink-2)}
+.cofre-caixa label{font-size:12px;color:var(--ink-2);margin-top:4px}
+.cofre-caixa input{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:14px;color:var(--ink)}
+.cofre-msg{min-height:1.2em}
+.cofre-msg.erro{color:var(--bad)}
+.cofre-acoes{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px}
+.cofre-acoes a{font-size:12.5px;color:var(--ink-2)}

@@ -68,3 +68,20 @@ região; a alternativa gratuita é a VM AMD *micro* (1 GB; o instalador cria mem
   `develop → main` → *Merge* → produção atualiza.
 * **Ver o que aconteceu numa atualização**: `ssh ubuntu@<ip> tail -50 /var/log/mapa/deploy.log`.
 * **Novas fotos**: enviadas pelo painel de produção.
+
+## Cópia de leitura no GitHub Pages (`gh-pages`)
+
+`https://igorcesar07-png.github.io/mapa-intervencoes/` é uma fotografia estática do relatório, gerada por
+`ferramentas/pages/montar_pages.py` a partir de uma cópia do banco (precisa de `pip install cryptography`).
+
+* **Visualizador** (`index.html`): só os dados que o visualizador do sistema recebe — buracos tapados
+  válidos, uma foto por buraco. Inconsistências, fotos excluídas e as demais fotos **não estão** nos
+  arquivos públicos. Não há botão de exportar.
+* **Administrador** (`admin.html`): os dados completos ficam em `admin.bin` e `fotos/x/*.bin`, cifrados
+  com AES-256-GCM; a chave é derivada da senha (PBKDF2-SHA256, 600 mil iterações). A senha não está em
+  nenhum arquivo. Com a senha: inconsistências, todas as fotos e exportação CSV.
+* **Limites** (o GitHub Pages só serve arquivos): não há contas individuais, nem envio de fotos, nem
+  registro de quem acessou; a senha de administrador é uma só e, para trocá-la, o site é gerado de novo.
+  Tudo que o visualizador vê pode ser salvo pelo próprio navegador — impedir isso de verdade exige não
+  publicar os dados (sistema com login). Para contas, envio de arquivos e permissões no servidor, use
+  o sistema (Flask) ou um serviço externo de autenticação e armazenamento.
