@@ -1,7 +1,8 @@
 /* Ajustes do administrador que valem para todos (GitHub Pages + Firebase).
  *
  * O site continua estático; o Firebase guarda só o que o administrador muda:
- *   ajustes/{idDaFoto}  correções da foto (classe, data, estaca, incluir/excluir) e, já calculado,
+ *   ajustes/{idDaFoto}  correções da foto (classe, data, estaca, incluir), decisão sobre a foto
+ *                       (decisao: "remover" do calor | "incorporar" na estaca; excluida), histórico (hist) e, já calculado,
  *                       o que o visualizador passa a ver dessa foto (visivel/pub/mini)
  *   config/camadas      camadas padrão de todos
  *   privado/chave       senha que abre os dados cifrados (só o administrador lê)
@@ -13,7 +14,7 @@
   const CFG = window.FIREBASE_CFG || {};
   const ATIVO = !!(CFG.apiKey && CFG.projectId);
   const BASE = ATIVO ? `https://firestore.googleapis.com/v1/projects/${CFG.projectId}/databases/(default)/documents` : "";
-  const INTENCOES = ["classe", "data", "est", "bloco", "lat", "lon", "incluir"];
+  const INTENCOES = ["classe", "data", "est", "bloco", "lat", "lon", "incluir", "decisao", "excluida", "motivo_exc"];
   const CAMPOS_PUB = ["id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "km", "rodovia", "local", "sentido"];
   const AJ = new Map();
   let sessao = null, ajustesLidos = false, camadasLidas = false, baseCache = null;
@@ -89,7 +90,7 @@
   function reagrupar(j){
     const nc = !!+((j.parametros || {}).nao_classificadas_contam ?? 1), agrupa = +((j.parametros || {}).agrupa_m ?? 25);
     for (const r of j.registros){ const d = r.d || (r.d = {}); delete d.grupo; delete d.rep; }
-    const validas = j.registros.filter(r => r.lat != null && !r.d.dup && r.classe !== "outro" && !r.d.anomalia);
+    const validas = j.registros.filter(r => r.lat != null && !r.d.dup && r.classe !== "outro" && !r.d.anomalia && !r.d.removida);
     const ord = validas.map((r, i) => [r, i]).sort((a, b) => { const x = a[0].data || "", y = b[0].data || ""; return x < y ? -1 : x > y ? 1 : a[1] - b[1]; }).map(x => x[0]);
     const grupos = [];
     for (const r of ord){
@@ -108,14 +109,29 @@
   function aplicarIntencoes(j){
     const regs = new Map(j.registros.map(r => [r.id, r]));
     let mudou = false;
+    const fora = new Set();
     for (const [id, a] of AJ){
       const r = regs.get(id); if (!r || !a) continue;
       const d = r.d || (r.d = {});
+      if (a.excluida){ fora.add(id); mudou = true; continue; }
       if (a.data){ r.data = a.data; r.data_fonte = "manual"; mudou = true; }
-      if (a.est != null){ d.est = a.est; d.bloco = a.bloco; r.lat = a.lat; r.lon = a.lon; d.dist = 0; d.anomalia = false; d.motivo = null; d.travado = false; mudou = true; }
+      if (a.est != null){
+        if (r.coord_original === undefined) r.coord_original = [r.lat ?? null, r.lon ?? null];
+        d.est = a.est; d.bloco = a.bloco; r.lat = a.lat; r.lon = a.lon; d.dist = 0; d.anomalia = false; d.motivo = null; d.travado = false; d.incorporada = true; r.decisao = "incorporar"; mudou = true;
+      }
+      if (a.decisao === "remover"){ d.removida = true; d.anomalia = false; d.motivo = null; d.travado = false; r.decisao = "remover"; mudou = true; }
       if (a.classe !== undefined){ r.classe = a.classe; mudou = true; }
       if (a.incluir){ if (r.classe !== "depois") r.classe = "depois"; d.anomalia = false; d.motivo = null; d.dup = null; mudou = true; }
       if (INTENCOES.some(k => a[k] !== undefined)) r.ajuste_admin = true;
+    }
+    if (fora.size){
+      // excluídas: fora de tudo; ficam numa lista própria para o administrador restaurar
+      j.excluidas = j.excluidas || [];
+      for (const r of j.registros) if (fora.has(r.id)){
+        const a = AJ.get(r.id) || {}, h = (a.hist || []).filter(x => x.acao === "excluir").at(-1);
+        j.excluidas.push({id:r.id, arquivo:r.arquivo, lote:r.lote, data:r.data, motivo:a.motivo_exc || null, quando:h ? h.quando : null});
+      }
+      j.registros = j.registros.filter(r => !fora.has(r.id));
     }
     if (mudou) reagrupar(j);
   }
@@ -176,6 +192,7 @@
     for (const x of ids){
       const w = quer.get(x), b = base.get(x), a = AJ.get(x) || {};
       const doc = {}; for (const k of INTENCOES) if (a[k] !== undefined) doc[k] = a[k];
+      if (a.hist && a.hist.length) doc.hist = a.hist;
       if (w && (!b || JSON.stringify(w) !== JSON.stringify(b))){ doc.visivel = true; doc.pub = w; if (!b && window.DADOS_MAPA.mini?.[x]) doc.mini = window.DADOS_MAPA.mini[x]; }
       else if (!w && b) doc.visivel = false;
       const velho = antes.get(x) || {};
@@ -190,6 +207,35 @@
     await carregar(false);
     return gravar.length;
   }
+
+  /* ---------------- decisão sobre a foto (janela "Resolver/Gerenciar" do relatorio.js) ---------------- */
+  window.podeDecidir = () => ATIVO && !!sessao;
+  window.salvarDecisao = async (id, c) => {
+    if (!sessao) throw new Error("Entre como administrador (Firebase) para salvar.");
+    const a = AJ.get(id) || {};
+    const LIMPA = {decisao:undefined, est:undefined, bloco:undefined, lat:undefined, lon:undefined, incluir:undefined};
+    let mud;
+    if (c.acao === "remover") mud = {...LIMPA, decisao:"remover"};
+    else if (c.acao === "incorporar"){
+      const p = estParaPonto(c.bloco, c.est);
+      if (!p) throw new Error(`A estaca ${fmtEst(c.est)} não está no eixo do Bloco ${c.bloco}.`);
+      mud = {...LIMPA, decisao:"incorporar", est:c.est, bloco:c.bloco, lat:+p[0].toFixed(7), lon:+p[1].toFixed(7)};
+    }
+    else if (c.acao === "desfazer") mud = {...LIMPA};
+    else if (c.acao === "excluir"){ if (c.confirmar !== true) throw new Error("Confirme a exclusão."); mud = {excluida:true, motivo_exc:c.motivo || undefined}; }
+    else if (c.acao === "restaurar"){
+      if (!a.excluida) throw new Error("Esta foto foi excluída no sistema com login; restaure por lá.");
+      mud = {excluida:undefined, motivo_exc:undefined};
+    }
+    else throw new Error("Ação inválida.");
+    const pega = o => { const x = {}; for (const k of ["decisao", "est", "bloco", "excluida"]) if (o[k] !== undefined) x[k] = o[k]; return x; };
+    const depois = {...a}; for (const [k, v] of Object.entries(mud)) { if (v === undefined) delete depois[k]; else depois[k] = v; }
+    mud.hist = [...(a.hist || []), {acao:c.acao, quando:new Date().toISOString().slice(0, 19), por:sessao.email, antes:pega(a), depois:pega(depois)}].slice(-30);
+    await salvar(id, mud);
+    return {ok:true};
+  };
+  window.historicoFoto = id => ((AJ.get(id) || {}).hist || []).slice().reverse()
+    .map(h => ({acao:"decisao_" + h.acao, quando:h.quando, por:h.por, detalhe:{antes:h.antes, depois:h.depois}}));
 
   /* ---------------- tela do administrador ---------------- */
   window.botaoAjuste = id => (ATIVO && sessao) ? `<button type="button" class="btn-aj" data-aj="${esc(id)}">Ajustar</button>` : "";
