@@ -1,0 +1,15 @@
+rules_version = '2';
+// Regras do Firestore do Mapa de Intervenções.
+// Troque COLE_AQUI_O_UID pelo "User UID" da conta do administrador (Authentication > Users).
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function admin() { return request.auth != null && request.auth.uid == "COLE_AQUI_O_UID"; }
+    // ajustes das fotos e camadas padrão: todos leem, só o administrador grava
+    match /ajustes/{id} { allow read: if true; allow write: if admin(); }
+    match /config/{id}  { allow read: if true; allow write: if admin(); }
+    // senha que abre os dados cifrados do site: só o administrador
+    match /privado/{id} { allow read, write: if admin(); }
+    // qualquer outra coisa: ninguém
+    match /{caminho=**} { allow read, write: if false; }
+  }
+}

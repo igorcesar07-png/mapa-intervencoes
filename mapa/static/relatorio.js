@@ -20,7 +20,7 @@ const grande = id => `/api/fotos/${encodeURIComponent(id)}/imagem`;
 function toast(msg, ms=3200){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"), ms); }
 // camadas: só o administrador tem o painel; o visualizador usa a configuração padrão
 // padrão definido pelo administrador em 07/11/2026 (o mesmo do painel do administrador ao abrir)
-const PADRAO_CAMADAS = {"#lSeg":true, "#oFundo":true, "#lCalor":true, "#lPontos":true, "#lAnom":false, "#oSoAntes":true, "#lTracado":false, "#lKm":true};
+const PADRAO_CAMADAS = {"#lSeg":true, "#oFundo":true, "#lCalor":true, "#lPontos":true, "#lAnom":false, "#oSoAntes":true, "#lTracado":false, "#lKm":true, "#rRaio":26, "#rMax":1};
 const marcado = sel => { const el = $(sel); return el ? el.checked : !!PADRAO_CAMADAS[sel]; };
 const valor = (sel, padrao) => { const el = $(sel); return el ? +el.value : padrao; };
 /* dia "AAAA-MM-DD" que existe no calendário e não está no futuro (o servidor já valida; aqui é defesa) */
@@ -39,6 +39,7 @@ async function carregar(enquadrar){
   if (r.status === 401){ location.href = "/login"; return; }
   if (!r.ok){ toast("Não foi possível carregar os dados. Recarregue a página."); return; }
   const j = await r.json();
+  if (window.aplicarAjustes) await window.aplicarAjustes(j);   // ajustes guardados fora (cópia do GitHub Pages)
   S.versao = j.versao; S.params = j.parametros || {}; S.temEstacas = j.tem_estacas;
   S.tracado = {blocos: j.eixo || {}}; _linhas = null; _eixoDesenhado = null;
   S.todos = j.registros.sort((a,b) => (a.data||"9999").localeCompare(b.data||"9999") || a.arquivo.localeCompare(b.arquivo));
@@ -259,7 +260,7 @@ function desenhar(){
   if (calor){ mapa.removeLayer(calor); calor = null; }
   if (marcado("#lCalor") && tapados.length){
     calor = L.heatLayer(tapados.map(g => [g.lat, g.lon, 1]), {
-      radius:valor("#rRaio", 26), blur:Math.round(valor("#rRaio", 26)*0.8), max:valor("#rMax", 1), minOpacity:.35, maxZoom:14,
+      radius:valor("#rRaio", PADRAO_CAMADAS["#rRaio"]), blur:Math.round(valor("#rRaio", PADRAO_CAMADAS["#rRaio"])*0.8), max:valor("#rMax", PADRAO_CAMADAS["#rMax"]), minOpacity:.35, maxZoom:14,
       gradient:{.15:"#2b6cb0", .35:"#38b2ac", .55:"#ecc94b", .75:"#ed8936", 1:"#e53e3e"}
     }).addTo(mapa);
   }
@@ -288,10 +289,10 @@ function desenhar(){
   if (ADMIN){
     $("#anomList").innerHTML = anom.length ? anom.map(r => `
       <div class="item bad" data-id="${esc(r.id)}" tabindex="0"><img src="${mini(r.id)}" alt="" loading="lazy">
-        <div><b>${esc(der(r.id).motivo)}</b><span>${fmtData(r.data)} · ${esc(r.arquivo)}</span>${r.coord_revisada?'<br><span>coordenada corrigida na releitura do OCR</span>':''}</div></div>`).join("")
+        <div><b>${esc(der(r.id).motivo)}</b><span>${fmtData(r.data)} · ${esc(r.arquivo)}</span>${r.coord_revisada?'<br><span>coordenada corrigida na releitura do OCR</span>':''}${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}</div></div>`).join("")
       : `<p class="hint" style="margin:0">Nenhuma inconsistência no filtro atual.</p>`;
     $("#anomList").querySelectorAll(".item").forEach(el => el.onclick = () => focar(el.dataset.id));
-    const fig = (r, cap) => `<figure><img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="" loading="lazy"><figcaption class="mot">${cap}</figcaption></figure>`;
+    const fig = (r, cap) => `<figure><img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="" loading="lazy"><figcaption class="mot">${cap}</figcaption>${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}</figure>`;
     const f = filtros();
     const sem = regs.filter(r => r.lat == null);
     const outros = S.todos.filter(r => r.classe === "outro" && !r._dup && (!f.lote || r.lote === f.lote));
@@ -445,6 +446,7 @@ function popup(r, semFoto){
       <tr><td>Arquivo</td><td style="word-break:break-all;font-size:11.5px">${esc(r.arquivo)}</td></tr>
     </table>
     ${ADMIN && r.texto_ocr ? `<details><summary>Texto lido no carimbo</summary><p>${esc(r.texto_ocr)}</p></details>` : ""}
+    ${ADMIN && !semFoto && window.botaoAjuste ? window.botaoAjuste(r.id) : ""}
   </div>`;
 }
 /* dica ao passar o mouse: a foto que originou o ponto (a foto do buraco tapado), data e classificação */
@@ -487,7 +489,7 @@ function popupGrupo(g){
   const rot = c => c === "antes" ? "Antes" : c === "depois" ? "Tapado" : "";
   const cab = g.tapado ? `<span class="tag info">1 buraco · ${fotos.length} foto(s)</span>` : `<span class="tag warn">Sem foto do buraco tapado — fora do calor</span>`;
   return `<div class="pp">${cab}
-    <div class="fotos">${ord.map(f => `<figure><img src="${mini(f.id)}" data-full="${grande(f.id)}" alt="">${rot(f.classe) || f.data ? `<figcaption>${rot(f.classe)} ${(f.data||"").slice(11,16)}</figcaption>` : ""}</figure>`).join("")}</div>
+    <div class="fotos">${ord.map(f => `<figure><img src="${mini(f.id)}" data-full="${grande(f.id)}" alt="">${rot(f.classe) || f.data ? `<figcaption>${rot(f.classe)} ${(f.data||"").slice(11,16)}</figcaption>` : ""}${window.botaoAjuste ? window.botaoAjuste(f.id) : ""}</figure>`).join("")}</div>
     ${popup(rep, true).replace('<div class="pp">', "<div>")}
   </div>`;
 }

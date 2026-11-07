@@ -148,6 +148,7 @@ def pagina(html, admin):
                   '<a href="./">Sair</a></div>')
         html = re.sub(r'(<div class="head" id="cabecalho">)', r'\1\n      ' + perfil, html, count=1)
         html = re.sub(r'<script src="/recursos/relatorio\.js[^"]*"></script>',
+                      f'<script src="firebase-config.js?v={VERSAO}"></script>\n<script src="recursos/ajustes.js?v={VERSAO}"></script>\n'
                       f'<script src="recursos/cofre.js?v={VERSAO}" data-v="{VERSAO}"></script>\n<script src="recursos/relatorio.js?v={VERSAO}"></script>', html)
         assert '<body data-papel="admin">' in html
         html = html.replace('<body data-papel="admin">', '''<body data-papel="admin">
@@ -155,8 +156,12 @@ def pagina(html, admin):
   <form class="cofre-caixa" id="cofreForm" autocomplete="off">
     <h1 id="cofreTit">Área do administrador</h1>
     <p>Os dados completos (inconsistências, todas as fotos e exportação) ficam cifrados neste site e só abrem com a senha do administrador.</p>
-    <label for="cofreSenha">Senha</label>
+    <div id="cofreEmailWrap" class="cofre-campo" hidden><label for="cofreEmail">E-mail do administrador</label>
+    <input type="email" id="cofreEmail" autocomplete="username"></div>
+    <label for="cofreSenha" id="cofreSenhaRot">Senha</label>
     <input type="password" id="cofreSenha" required autofocus autocomplete="current-password">
+    <div id="cofreChaveWrap" class="cofre-campo" hidden><label for="cofreChave">Senha do site</label>
+    <input type="password" id="cofreChave" autocomplete="off"></div>
     <p class="cofre-msg" id="cofreMsg" role="status"></p>
     <div class="cofre-acoes"><a href="./">Voltar ao mapa público</a><button class="btn pri" type="submit" id="cofreBtn">Entrar</button></div>
   </form>
@@ -165,7 +170,8 @@ def pagina(html, admin):
         perfil = ('<div class="conta"><span class="papel">Visualizador</span><span class="quem">consulta pública</span>'
                   '<a href="admin.html">Entrar como administrador</a></div>')
         html = re.sub(r'(<div class="head" id="cabecalho">)', r'\1\n      ' + perfil, html, count=1)
-        html = re.sub(r'<script src="/recursos/relatorio\.js[^"]*"></script>', f'<script src="dados.js?v={VERSAO}"></script>\n<script src="recursos/relatorio.js?v={VERSAO}"></script>', html)
+        html = re.sub(r'<script src="/recursos/relatorio\.js[^"]*"></script>', f'<script src="dados.js?v={VERSAO}"></script>\n<script src="firebase-config.js?v={VERSAO}"></script>\n'
+                      f'<script src="recursos/ajustes.js?v={VERSAO}"></script>\n<script src="recursos/relatorio.js?v={VERSAO}"></script>', html)
     html = re.sub(r'(<div class="foot"[^>]*>)', r'\1Retrato dos dados de ' + quando + '. ', html, count=1)
     left = re.findall(r'(?:href|src)="/[^"]*"', html)
     assert not left, left
@@ -179,8 +185,12 @@ shutil.copytree(st / "vendor/leaflet/images", OUT / "recursos/images")
 shutil.copy(st / "vendor/leaflet/leaflet.js", OUT / "recursos/leaflet.js")
 shutil.copy(st / "vendor/leaflet-heat.js", OUT / "recursos/leaflet-heat.js")
 for n in ("relatorio.css", "web.css"): shutil.copy(st / n, OUT / "recursos" / n)
-shutil.copy(pathlib.Path(sys.argv[0]).parent / "cofre.js", OUT / "recursos/cofre.js")
-with open(OUT / "recursos/web.css", "a") as f: f.write((pathlib.Path(sys.argv[0]).parent / "cofre.css").read_text())
+AQUI = pathlib.Path(__file__).resolve().parent
+for n in ("cofre.js", "ajustes.js"): shutil.copy(AQUI / n, OUT / "recursos" / n)
+# configuração pública do Firebase (identificadores, não segredos); sem ela o site funciona sem ajustes compartilhados
+cfg_fb = AQUI / "firebase-config.json"
+(OUT / "firebase-config.js").write_text("window.FIREBASE_CFG = " + (cfg_fb.read_text().strip() if cfg_fb.exists() else "{}") + ";")
+with open(OUT / "recursos/web.css", "a") as f: f.write((AQUI / "cofre.css").read_text())
 (OUT / ".nojekyll").write_text("")
 (OUT / "robots.txt").write_text("User-agent: *\nDisallow: /\n")
 print("ok", quando)
