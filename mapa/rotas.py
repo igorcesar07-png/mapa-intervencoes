@@ -8,7 +8,7 @@ from flask import (Blueprint, Response, abort, current_app, g, jsonify, redirect
                    send_file, send_from_directory, session, url_for)
 
 from . import eixo as eixo_mod
-from . import processamento, regras, visao
+from . import classificacao, processamento, regras, visao
 from .datas import data_valida
 from .db import agora, auditar, nova_versao, parametros, set_parametro
 from .seguranca import (PAPEIS, SENHA_MIN, autenticar, eh_admin, hash_senha, iniciar_sessao, requer_admin,
@@ -181,9 +181,12 @@ def api_enviar():
         return jsonify(erro="Escolha um arquivo .zip para enviar."), 400
     if not arq.filename.lower().endswith(".zip"):
         return jsonify(erro="Envie um arquivo .zip."), 400
-    status, corpo = processamento.receber_envio(g.db, cfg(), arq, arq.filename, g.usuario["id"])
+    empresa = re.sub(r"\s+", " ", request.form.get("empresa") or "").strip()[:120]
+    if len(empresa) < 2:
+        return jsonify(erro="Informe a empresa que executou os serviços destas fotos."), 400
+    status, corpo = processamento.receber_envio(g.db, cfg(), arq, arq.filename, g.usuario["id"], empresa=empresa)
     if status == 202:
-        auditar(g.db, g.usuario["id"], "enviou_zip", {"envio_id": corpo["envio_id"], "nome": arq.filename})
+        auditar(g.db, g.usuario["id"], "enviou_zip", {"envio_id": corpo["envio_id"], "nome": arq.filename, "empresa": empresa})
         w = current_app.extensions.get("mapa_worker")
         if w:
             w.acordar.set()
@@ -195,7 +198,45 @@ def api_enviar():
 def api_envios():
     rows = g.db.execute("SELECT e.*, u.email AS enviado_por_email FROM envios e LEFT JOIN usuarios u ON u.id=e.enviado_por "
                         "ORDER BY e.id DESC LIMIT 100").fetchall()
-    return jsonify(envios=[_envio_json(r) for r in rows])
+    rev = {}
+    for r in g.db.execute("SELECT f.envio_id, v.estado, COUNT(*) n FROM revisao_foto v JOIN fotos f ON f.id=v.foto_id "
+                          "GROUP BY f.envio_id, v.estado"):
+        rev.setdefault(r["envio_id"], {})[r["estado"]] = r["n"]
+    return jsonify(envios=[{**_envio_json(r), "revisao": rev.get(r["id"], {})} for r in rows])
+
+
+@bp.post("/api/admin/envios/<int:envio_id>/empresa")
+@requer_admin
+def api_envio_empresa(envio_id):
+    """Informa ou corrige a empresa executora de um lote de envio (vale para todas as fotos dele)."""
+    empresa = re.sub(r"\s+", " ", str(_json().get("empresa") or "")).strip()[:120]
+    if len(empresa) < 2:
+        return jsonify(erro="Informe o nome da empresa."), 400
+    antes = g.db.execute("SELECT empresa FROM envios WHERE id=?", (envio_id,)).fetchone()
+    if not antes:
+        abort(404)
+    g.db.execute("UPDATE envios SET empresa=? WHERE id=?", (empresa, envio_id))
+    nova_versao(g.db)
+    visao.invalidar()
+    auditar(g.db, g.usuario["id"], "alterou_empresa_envio", {"envio_id": envio_id, "de": antes["empresa"], "para": empresa})
+    return jsonify(ok=True, empresa=empresa)
+
+
+@bp.post("/api/admin/envios/<int:envio_id>/confirmar")
+@requer_admin
+def api_envio_confirmar(envio_id):
+    """Inclui no mapa as fotos do envio que foram classificadas automaticamente (estado 'aguardando').
+    As pendentes continuam na fila até uma decisão manual."""
+    if not g.db.execute("SELECT 1 FROM envios WHERE id=?", (envio_id,)).fetchone():
+        abort(404)
+    cur = g.db.execute("UPDATE revisao_foto SET estado='confirmada', por=?, quando=? WHERE estado='aguardando' AND foto_id IN "
+                       "(SELECT id FROM fotos WHERE envio_id=?)", (g.usuario["id"], agora(), envio_id))
+    pend = g.db.execute("SELECT COUNT(*) FROM revisao_foto v JOIN fotos f ON f.id=v.foto_id WHERE f.envio_id=? AND v.estado='pendente'",
+                        (envio_id,)).fetchone()[0]
+    nova_versao(g.db)
+    visao.invalidar()
+    auditar(g.db, g.usuario["id"], "confirmou_envio", {"envio_id": envio_id, "fotos": cur.rowcount})
+    return jsonify(ok=True, confirmadas=cur.rowcount, pendentes=pend)
 
 
 @bp.get("/api/admin/envios/<int:envio_id>")
@@ -319,6 +360,138 @@ def api_classificar(foto_id):
     # devolve o que ficou gravado, para a tela só confirmar depois de ler do banco
     salvo = g.db.execute("SELECT classe, motivo_exclusao, classificado_em FROM fotos WHERE id=?", (foto_id,)).fetchone()
     return jsonify(ok=True, **dict(salvo))
+
+
+# ------------------------------------------------------------------ administrador: fila de revisão da classificação
+def _revisao_json(r):
+    d = dict(r)
+    for k in ("carimbo", "sistema", "divergencias", "sugestao"):
+        d[k] = json.loads(d[k]) if d.get(k) else {"divergencias": [], "sugestao": None}.get(k, {})
+    ex = json.loads(d.pop("extras") or "{}")
+    d["texto_ocr"] = ex.get("texto_ocr")
+    return d
+
+
+@bp.get("/api/admin/revisao")
+@requer_admin
+def api_revisao():
+    estado = request.args.get("estado") or "pendente"
+    if estado not in ("aguardando", "pendente", "divergente", "confirmada"):
+        return jsonify(erro="Estado inválido."), 400
+    cond, args = ["v.estado=?"], [estado]
+    if request.args.get("envio"):
+        cond.append("f.envio_id=?")
+        args.append(int(request.args["envio"]))
+    try:
+        inicio = max(0, int(request.args.get("inicio", 0) or 0))
+    except ValueError:
+        inicio = 0
+    where = " AND ".join(cond)
+    total = g.db.execute(f"SELECT COUNT(*) FROM revisao_foto v JOIN fotos f ON f.id=v.foto_id WHERE {where}", args).fetchone()[0]
+    rows = g.db.execute(
+        f"SELECT v.*, f.arquivo, f.data, f.data_fonte, f.lat AS lat_foto, f.lon AS lon_foto, f.coord_fonte, f.envio_id, f.lote AS lote_envio,"
+        f" f.extras, e.empresa FROM revisao_foto v JOIN fotos f ON f.id=v.foto_id LEFT JOIN envios e ON e.id=f.envio_id"
+        f" WHERE {where} ORDER BY f.data, f.arquivo LIMIT 40 OFFSET ?", args + [inicio]).fetchall()
+    contagem = {k: v for k, v in g.db.execute("SELECT estado, COUNT(*) FROM revisao_foto GROUP BY estado")}
+    blocos = {b: v["rodovia"] for b, v in visao.carregar_blocos(g.db).items()}
+    return jsonify(itens=[_revisao_json(r) for r in rows], total=total, inicio=inicio, contagem=contagem, blocos=blocos,
+                   elegiveis=sorted([list(x) for x in classificacao.ELEGIVEIS]))
+
+
+@bp.post("/api/admin/revisao/<foto_id>")
+@requer_admin
+def api_revisar(foto_id):
+    """Decisão sobre uma foto da fila de revisão.
+    confirmar: inclui no mapa com a classificação atual (automática ou a sugestão aceita);
+    corrigir:  inclui no mapa com rodovia/lote/estaca e/ou coordenada informadas, conferidas no eixo;
+    manter_sistema (divergente): mantém a foto como está no mapa e encerra a divergência;
+    pendente:  volta para a fila (fora do mapa)."""
+    if not ID_FOTO.match(foto_id):
+        abort(404)
+    rv = g.db.execute("SELECT * FROM revisao_foto WHERE foto_id=?", (foto_id,)).fetchone()
+    foto = g.db.execute("SELECT lat, lon FROM fotos WHERE id=?", (foto_id,)).fetchone()
+    if not rv or not foto:
+        abort(404)
+    d = _json()
+    acao = d.get("acao")
+    antes = dict(rv)
+    blocos = visao.carregar_blocos(g.db)
+    novo = {"rodovia": rv["rodovia"], "lote": rv["lote"], "est": rv["est"], "lat": rv["lat"], "lon": rv["lon"], "fonte": rv["fonte"]}
+    if acao == "confirmar":
+        if rv["lote"] is None or rv["lat"] is None:
+            sug = json.loads(rv["sugestao"]) if rv["sugestao"] else None
+            if not sug or not d.get("usar_sugestao"):
+                return jsonify(erro="Esta foto não tem classificação confiável: corrija rodovia, lote e estaca (ou coordenada)."), 400
+            d = {"rodovia": sug["rodovia"], "lote": sug["lote"], "est": sug["est"]}
+            acao = "corrigir"
+    if acao == "corrigir":
+        rod = classificacao.norm_rodovia(d.get("rodovia"))
+        lote = classificacao.norm_lote(d.get("lote"))
+        if (rod, lote) not in classificacao.ELEGIVEIS:
+            return jsonify(erro="Escolha um segmento elegível: BR-277 lote 02 ou 03, ou BR-373 lote 04."), 400
+        if lote not in blocos:
+            return jsonify(erro=f"O eixo do lote {lote} não está carregado: carregue o KMZ antes de confirmar."), 400
+        est = d.get("est")
+        lat, lon = d.get("lat"), d.get("lon")
+        lim = float(parametros(g.db).get("limite_anomalia_m", 150))
+        if lat not in (None, "") and lon not in (None, ""):
+            try:
+                lat, lon = float(lat), float(lon)
+            except (TypeError, ValueError):
+                return jsonify(erro="Coordenada inválida."), 400
+            pj = regras.projetar({"lat": lat, "lon": lon}, regras.linhas_eixo({lote: blocos[lote]}))
+            if pj.get("dist") is None or pj["dist"] > lim:
+                return jsonify(erro=f"Essa coordenada não fica no lote {lote} (a {pj.get('dist') or 0:,.0f} m do eixo)."
+                               .replace(",", ".")), 400
+            if est in (None, ""):
+                est = pj.get("est")
+            fonte = "coordenada informada pelo administrador"
+        else:
+            if est in (None, ""):
+                return jsonify(erro="Informe a estaca ou a coordenada."), 400
+            lat = lon = None
+            fonte = "estaca informada pelo administrador"
+        try:
+            est = float(est)
+        except (TypeError, ValueError):
+            return jsonify(erro="Estaca inválida."), 400
+        p = regras.estaca_para_ponto(blocos, lote, est)
+        if not p:
+            return jsonify(erro=f"A estaca {regras.fmt_est(est)} não existe no eixo do lote {lote}."), 400
+        if lat is None:
+            lat, lon = round(p[0], 7), round(p[1], 7)
+        novo = {"rodovia": rod, "lote": lote, "est": est, "lat": lat, "lon": lon, "fonte": fonte}
+        estado = "confirmada"
+    elif acao == "confirmar":
+        estado = "confirmada"
+    elif acao == "manter_sistema":
+        if rv["estado"] != "divergente":
+            return jsonify(erro="Só vale para fotos que já estavam no mapa."), 400
+        estado = "confirmada"
+        novo = {"rodovia": None, "lote": None, "est": None, "lat": None, "lon": None, "fonte": "mantida como estava no mapa"}
+    elif acao == "pendente":
+        if rv["estado"] == "divergente":
+            return jsonify(erro="Foto que já estava no mapa: use 'manter como está' ou corrija a classificação."), 400
+        estado = "pendente"
+    else:
+        return jsonify(erro="Ação inválida."), 400
+    g.db.execute("UPDATE revisao_foto SET estado=?, rodovia=?, lote=?, est=?, lat=?, lon=?, fonte=?, por=?, quando=? WHERE foto_id=?",
+                 (estado, novo["rodovia"], novo["lote"], novo["est"], novo["lat"], novo["lon"], novo["fonte"], g.usuario["id"], agora(),
+                  foto_id))
+    nova_versao(g.db)
+    visao.invalidar()
+    auditar(g.db, g.usuario["id"], f"revisao_{acao}", {"foto": foto_id, "antes": {k: antes[k] for k in novo | {"estado": 0}},
+                                                       "depois": {**novo, "estado": estado}})
+    return jsonify(ok=True, estado=estado, **novo)
+
+
+@bp.post("/api/admin/revisao/reanalisar")
+@requer_admin
+def api_reanalisar():
+    """Compara de novo o carimbo das fotos que já estão no mapa com o sistema. Só sinaliza; não muda fotos."""
+    n = processamento.revisar_fotos_existentes(g.db)
+    auditar(g.db, g.usuario["id"], "reanalisou_carimbos", {"divergentes": n})
+    return jsonify(ok=True, divergentes=n)
 
 
 # ------------------------------------------------------------------ administrador: decisão sobre uma foto

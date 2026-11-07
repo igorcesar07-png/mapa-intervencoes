@@ -22,9 +22,9 @@ from pathlib import Path, PurePosixPath
 
 from PIL import Image
 
-from . import visao
+from . import classificacao, regras, visao
 from .datas import data_valida, fmt_br
-from .db import agora, conectar, nova_versao
+from .db import agora, conectar, nova_versao, parametros
 
 log = logging.getLogger("mapa.processamento")
 RAIZ = Path(__file__).resolve().parent.parent
@@ -118,7 +118,7 @@ def validar_zip(caminho, cfg):
         raise ZipInvalido("O ZIP usa um método de compressão não suportado.")
 
 
-def receber_envio(con, cfg, arquivo_storage, nome_original, usuario_id):
+def receber_envio(con, cfg, arquivo_storage, nome_original, usuario_id, empresa=None):
     """Grava o ZIP enviado (somente leitura), valida e coloca na fila. Retorna (status_http, corpo)."""
     cfg.preparar_pastas()
     tmp = cfg.TMP_DIR / f"envio-{os.getpid()}-{threading.get_ident()}-{time.time_ns()}.zip"
@@ -147,9 +147,10 @@ def receber_envio(con, cfg, arquivo_storage, nome_original, usuario_id):
         shutil.move(str(tmp), destino)
         os.chmod(destino, 0o444)  # o arquivo enviado não é alterado nem apagado
         cur = con.execute(
-            "INSERT INTO envios(sha256, nome_original, arquivo, tamanho, lote, estado, mensagem, enviado_por, criado_em) "
-            "VALUES(?,?,?,?,?, 'aguardando', 'Na fila para processamento.', ?, ?)",
-            (sha, os.path.basename(nome_original or "envio.zip")[:200], destino.name, tam, nome_lote(nome_original), usuario_id, agora()))
+            "INSERT INTO envios(sha256, nome_original, arquivo, tamanho, lote, estado, mensagem, enviado_por, criado_em, empresa) "
+            "VALUES(?,?,?,?,?, 'aguardando', 'Na fila para processamento.', ?, ?, ?)",
+            (sha, os.path.basename(nome_original or "envio.zip")[:200], destino.name, tam, nome_lote(nome_original), usuario_id, agora(),
+             empresa))
         return 202, {"envio_id": cur.lastrowid, "estado": "aguardando"}
     except ZipInvalido as e:
         return 400, {"erro": str(e)}
@@ -324,7 +325,8 @@ def gravar_foto(con, r, envio_id, membro, classe=None, motivo=None, extras_extra
     if nd:
         r = {**r, "data_antes_envio": nd}
     extras = {k: r[k] for k in ("texto_ocr", "data_revisada", "data_ocr_original", "data_suspeita", "data_invalida", "data_antes_envio",
-                                "coord_revisada", "coord_ocr_original", "revisado_manual") if r.get(k) is not None}
+                                "coord_revisada", "coord_ocr_original", "revisado_manual", "lote_carimbo", "est_carimbo", "faixa",
+                                "nota", "coord_exif") if r.get(k) is not None}
     if extras_extra:
         extras.update(extras_extra)
     thumb = r.get("thumb") or ""
@@ -339,6 +341,61 @@ def gravar_foto(con, r, envio_id, membro, classe=None, motivo=None, extras_extra
     for tipo, msg in ocorrencias_da_foto(r):
         con.execute("INSERT INTO ocorrencias(envio_id, foto_id, membro, tipo, mensagem, criado_em) VALUES(?,?,?,?,?,?)",
                     (envio_id, r["id"], membro, tipo, msg, agora()))
+
+
+# ------------------------------------------------------------------ revisão da classificação
+def registrar_revisao(con, r, blocos, params, linhas=None, novo=True):
+    """Grava a classificação da foto. novo=True (foto importada agora): 'aguardando' ou 'pendente', fora do
+    mapa até a confirmação. novo=False (foto que já estava no mapa): só registra 'divergente' se houver
+    divergência; a foto continua no mapa. Devolve 'auto' ou 'pendente'."""
+    c = classificacao.classificar(r, blocos, params, linhas)
+    if novo and r.get("data") and r.get("lat") is not None and r.get("data_fonte") in ("carimbo", "exif"):
+        # mesma data/hora e mesma posição de uma foto já guardada: provável reenvio da mesma intervenção
+        for o in con.execute("SELECT id, arquivo, lat, lon FROM fotos WHERE data=? AND id<>? AND lat IS NOT NULL", (r["data"], r["id"])):
+            if regras.dist_m((r["lat"], r["lon"]), (o["lat"], o["lon"])) < 30:
+                c["divergencias"].append({"campo": "duplicata", "carimbo": None, "sistema": o["arquivo"],
+                                          "msg": f"Mesma data, hora e posição da foto {o['arquivo']}, já existente: provável reenvio."})
+                c["estado"], c["final"] = "pendente", None
+                break
+    if not novo and c["estado"] == "auto":
+        return "auto"
+    estado = ("aguardando" if c["estado"] == "auto" else "pendente") if novo else "divergente"
+    f = c["final"] or {}
+    con.execute("INSERT INTO revisao_foto(foto_id, estado, carimbo, sistema, divergencias, sugestao, rodovia, lote, est, lat, lon, fonte,"
+                " criado_em) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(foto_id) DO UPDATE SET estado=excluded.estado,"
+                " carimbo=excluded.carimbo, sistema=excluded.sistema, divergencias=excluded.divergencias, sugestao=excluded.sugestao,"
+                " rodovia=excluded.rodovia, lote=excluded.lote, est=excluded.est, lat=excluded.lat, lon=excluded.lon, fonte=excluded.fonte",
+                (r["id"], estado, json.dumps(c["carimbo"], ensure_ascii=False), json.dumps(c["sistema"], ensure_ascii=False),
+                 json.dumps(c["divergencias"], ensure_ascii=False), json.dumps(c["sugestao"], ensure_ascii=False) if c["sugestao"] else None,
+                 f.get("rodovia"), f.get("lote"), f.get("est"), f.get("lat"), f.get("lon"), f.get("fonte"), agora()))
+    return c["estado"]
+
+
+def revisar_fotos_existentes(con):
+    """Compara o carimbo das fotos que já estão no mapa com a classificação do sistema e sinaliza as
+    divergências (estado 'divergente'). Não muda nenhuma foto: a decisão é do administrador.
+    Fotos já revisadas ('confirmada') ou em revisão de importação não são tocadas. Devolve quantas divergem."""
+    blocos, params = visao.carregar_blocos(con), parametros(con)
+    if not blocos:
+        return 0
+    linhas = regras.linhas_eixo(blocos)
+    com_revisao = {r[0]: r[1] for r in con.execute("SELECT foto_id, estado FROM revisao_foto")}
+    n = 0
+    for row in con.execute("SELECT id, arquivo, lat, lon, rodovia, extras FROM fotos").fetchall():
+        est = com_revisao.get(row["id"])
+        if est in ("aguardando", "pendente", "confirmada"):
+            continue
+        r = dict(row)
+        r["extras"] = json.loads(r["extras"] or "{}")
+        if not (r["extras"].get("texto_ocr") or r["extras"].get("lote_carimbo")):
+            continue   # sem carimbo lido: nada a comparar
+        if registrar_revisao(con, r, blocos, params, linhas, novo=False) == "pendente":
+            n += 1
+        elif est == "divergente":   # a divergência sumiu (ex.: eixo corrigido)
+            con.execute("DELETE FROM revisao_foto WHERE foto_id=? AND estado='divergente'", (r["id"],))
+    nova_versao(con)
+    visao.invalidar()
+    return n
 
 
 # ------------------------------------------------------------------ processamento
@@ -430,11 +487,18 @@ def processar_envio(con, cfg, envio_id):
 
         con.execute("BEGIN IMMEDIATE")
         try:
+            blocos, params = visao.carregar_blocos(con), parametros(con)
+            linhas = regras.linhas_eixo(blocos)
+            cont = {"auto": 0, "pendente": 0}
             for r in novos:
                 gravar_foto(con, r, envio_id, membro_de[r["id"]])
+                # cada foto nova passa pela revisão: só entra no mapa depois da confirmação do administrador
+                k = registrar_revisao(con, r, blocos, params, linhas, novo=True)
+                cont[k] += 1
             nova_versao(con)
             sem = sum(1 for r in novos if r.get("lat") is None)
-            msg = (f"{len(novos)} foto(s) nova(s), {repetidas} já existente(s) ignorada(s), "
+            msg = (f"{len(novos)} foto(s) nova(s): {cont['auto']} classificada(s) automaticamente aguardando confirmação, "
+                   f"{cont['pendente']} pendente(s) de revisão. {repetidas} já existente(s) ignorada(s), "
                    f"{ignoradas} arquivo(s) ignorado(s), {sem} sem coordenada.")
             con.execute("UPDATE envios SET estado='concluido', concluido_em=?, novas=?, mensagem=? WHERE id=?",
                         (agora(), len(novos), msg, envio_id))

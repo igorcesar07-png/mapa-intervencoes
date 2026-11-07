@@ -105,6 +105,12 @@ def create_app(cfg=None, iniciar_worker=None):
     corrigidas = processamento.corrigir_datas_invalidas(con)
     if processamento.sinalizar_datas_antes_do_envio(con):
         logging.getLogger("mapa").info("Fotos com data muito anterior ao envio pelo WhatsApp sinalizadas para conferência.")
+    try:   # carimbo x sistema nas fotos que já estão no mapa: só sinaliza, não muda nada
+        div = processamento.revisar_fotos_existentes(con)
+        if div:
+            logging.getLogger("mapa").info("%s foto(s) do mapa com carimbo divergente do sistema, aguardando revisão.", div)
+    except Exception:
+        logging.getLogger("mapa").exception("Falha ao comparar carimbos das fotos existentes (o sistema segue normalmente).")
     con.close()
     if iniciar_worker if iniciar_worker is not None else cfg.WORKER:
         w = processamento.Worker(cfg)

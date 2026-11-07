@@ -84,6 +84,22 @@ CREATE TABLE IF NOT EXISTS decisoes_foto(
   motivo TEXT,
   por INTEGER, quando TEXT
 );
+-- revisão da classificação de cada foto importada (a linha original em "fotos" não muda):
+--   aguardando = classificação automática feita; falta o administrador confirmar a inclusão no mapa
+--   pendente   = sem classificação confiável ou com dados conflitantes; só entra por decisão manual
+--   confirmada = incluída no mapa pelo administrador (rodovia/lote/estaca/posição finais abaixo)
+--   divergente = foto que já estava no mapa e cujo carimbo diverge do sistema; continua no mapa até a decisão
+CREATE TABLE IF NOT EXISTS revisao_foto(
+  foto_id TEXT PRIMARY KEY REFERENCES fotos(id),
+  estado TEXT NOT NULL CHECK(estado IN ('aguardando','pendente','confirmada','divergente')),
+  carimbo TEXT NOT NULL DEFAULT '{}',
+  sistema TEXT NOT NULL DEFAULT '{}',
+  divergencias TEXT NOT NULL DEFAULT '[]',
+  sugestao TEXT,
+  rodovia TEXT, lote TEXT, est REAL, lat REAL, lon REAL, fonte TEXT,
+  por INTEGER, quando TEXT, criado_em TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS revisao_estado ON revisao_foto(estado);
 CREATE TABLE IF NOT EXISTS parametros(chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS auditoria(
   id INTEGER PRIMARY KEY, usuario_id INTEGER, acao TEXT NOT NULL, detalhe TEXT, quando TEXT NOT NULL
@@ -119,6 +135,9 @@ def conectar(caminho):
 def inicializar(caminho):
     con = conectar(caminho)
     con.executescript(ESQUEMA)
+    # colunas acrescentadas depois (bancos antigos ganham a coluna, sem perder nada)
+    if "empresa" not in {r["name"] for r in con.execute("PRAGMA table_info(envios)")}:
+        con.execute("ALTER TABLE envios ADD COLUMN empresa TEXT")
     for k, v in PARAMETROS_PADRAO.items():
         con.execute("INSERT OR IGNORE INTO parametros(chave, valor) VALUES(?,?)", (k, v))
     con.close()

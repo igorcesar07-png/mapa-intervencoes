@@ -143,6 +143,9 @@ def calcular(fotos, blocos, params):
         d = {"dup": dup.get(r["id"]), "anomalia": False, "motivo": None, "travado": False}
         if r["lat"] is not None and tem_eixo:
             d.update(projetar(r, linhas))
+        if r.get("fixa_bloco") is not None and r.get("fixa_est") is not None:
+            # classificação confirmada pelo administrador na revisão da importação
+            d.update(bloco=str(r["fixa_bloco"]), est=float(r["fixa_est"]))
         dec = r.get("decisao")
         if dec == "incorporar":
             # posição escolhida pelo administrador: ponto normal, na estaca e no bloco que ele definiu

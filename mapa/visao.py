@@ -14,7 +14,7 @@ _lock = threading.Lock()
 CAMPOS_FOTO = ("id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "coord_fonte",
                "km", "rodovia", "local", "sentido", "classe", "motivo_exclusao", "extras", "envio_id")
 # Campos que o visualizador recebe de uma foto válida
-CAMPOS_PUBLICOS = ("id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "km", "rodovia", "local", "sentido")
+CAMPOS_PUBLICOS = ("id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "km", "rodovia", "local", "sentido", "empresa")
 
 
 def carregar_blocos(con):
@@ -30,13 +30,27 @@ def calculo(con):
         if _cache["versao"] == versao:
             return _cache
         decisoes = {r["foto_id"]: dict(r) for r in con.execute("SELECT * FROM decisoes_foto")}
-        fotos, excluidas = [], []
+        revisoes = {r["foto_id"]: dict(r) for r in con.execute("SELECT * FROM revisao_foto")}
+        empresas = {r["id"]: r["empresa"] for r in con.execute("SELECT id, empresa FROM envios")}
+        fotos, excluidas, em_revisao = [], [], set()
         for r in con.execute(f"SELECT {', '.join(CAMPOS_FOTO)}, importado_em FROM fotos"):
             f = dict(r)
             f["extras"] = json.loads(f["extras"] or "{}")
             if f["data"] and not data_valida(f["data"], f.pop("importado_em")):
                 f["extras"]["data_invalida"], f["data"], f["data_fonte"] = f["data"], None, None
             f.pop("importado_em", None)
+            f["empresa"] = empresas.get(f["envio_id"])
+            rv = revisoes.get(f["id"])
+            if rv and rv["estado"] in ("aguardando", "pendente"):
+                em_revisao.add(f["id"])     # importada e ainda não confirmada: fora do mapa
+                continue
+            if rv and rv["estado"] == "confirmada" and rv["lat"] is not None:
+                if (rv["lat"], rv["lon"]) != (f["lat"], f["lon"]):
+                    f["coord_original"] = [f["lat"], f["lon"]]
+                    f["lat"], f["lon"] = rv["lat"], rv["lon"]
+                f["fixa_bloco"], f["fixa_est"] = rv["lote"], rv["est"]
+            if rv and rv["estado"] == "divergente":
+                f["divergencias"] = json.loads(rv["divergencias"] or "[]")
             dec = decisoes.get(f["id"])
             if dec and dec["excluida"]:
                 # excluída: fora de tudo (mapa, listas, relatórios, exportações); fica no banco para restaurar
@@ -55,7 +69,7 @@ def calculo(con):
         calc = regras.calcular(fotos, blocos, p)
         calc["visiveis"] = {gp["rep"] for gp in calc["grupos"] if gp["tapado"]}
         _cache.update(versao=versao, calc=calc, fotos={f["id"]: f for f in fotos}, blocos=blocos, params=p,
-                      excluidas=sorted(excluidas, key=lambda e: e["quando"] or "", reverse=True))
+                      excluidas=sorted(excluidas, key=lambda e: e["quando"] or "", reverse=True), em_revisao=em_revisao)
         return _cache
 
 
@@ -68,7 +82,8 @@ def pode_ver_foto(con, papel, foto_id):
     c = calculo(con)
     if foto_id not in c["fotos"]:
         # foto excluída: só o administrador vê (para conferir e restaurar)
-        return papel == "admin" and any(e["id"] == foto_id for e in c.get("excluidas") or [])
+        return papel == "admin" and (foto_id in (c.get("em_revisao") or set())
+                                     or any(e["id"] == foto_id for e in c.get("excluidas") or []))
     return papel == "admin" or foto_id in c["calc"]["visiveis"]
 
 
@@ -86,12 +101,13 @@ def relatorio(con, papel):
         for f in fotos.values():
             r = {k: f[k] for k in CAMPOS_FOTO if k != "extras"}
             r.update({k: v for k, v in f["extras"].items() if k != "thumb"})
-            for k in ("decisao", "coord_original"):
+            for k in ("decisao", "coord_original", "empresa", "divergencias"):
                 if f.get(k) is not None:
                     r[k] = f[k]
             r["d"] = calc["deriv"][f["id"]]
             regs.append(r)
-        base.update(registros=regs, grupos=calc["grupos"], excluidas=c["excluidas"],
+        n_rev = {k: v for k, v in con.execute("SELECT estado, COUNT(*) FROM revisao_foto WHERE estado != 'confirmada' GROUP BY estado")}
+        base.update(registros=regs, grupos=calc["grupos"], excluidas=c["excluidas"], revisao=n_rev,
                     parametros={k: p[k] for k in ("limite_anomalia_m", "gps_travado_ativo", "gps_travado_min",
                                                   "isolado_m", "agrupa_m", "nao_classificadas_contam")})
         return base
@@ -147,7 +163,7 @@ def exportar_csv(con, papel, filtros):
     out = io.StringIO()
     w = csv.writer(out, delimiter=";", lineterminator="\r\n")
     base_cab = ["arquivo", "data", "fonte_data", "latitude", "longitude", "bloco", "estaca", "km", "rodovia",
-                "local", "sentido", "lote", "dist_eixo_m"]
+                "local", "sentido", "lote", "dist_eixo_m", "empresa"]
     rodovia_bloco = {b: v["rodovia"] for b, v in c["blocos"].items()}
 
     def linha(f, d):
@@ -155,7 +171,7 @@ def exportar_csv(con, papel, filtros):
                 d.get("bloco") or "", regras.fmt_est(d["est"]) if d.get("est") is not None else "",
                 _num(d["est"] / 1000, 3) if d.get("est") is not None else "",
                 rodovia_bloco.get(d.get("bloco")) or f["rodovia"] or "", f["local"] or "", f["sentido"] or "",
-                f["lote"] or "", round(d["dist"]) if d.get("dist") is not None else ""]
+                f["lote"] or "", round(d["dist"]) if d.get("dist") is not None else "", f.get("empresa") or ""]
 
     if papel == "admin":
         grupo_tapado = {gp["id"]: gp["tapado"] for gp in calc["grupos"]}
