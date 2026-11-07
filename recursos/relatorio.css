@@ -134,3 +134,34 @@ details[open] summary{margin-bottom:8px}
   .leaflet-bottom{bottom:132px}
   .leaflet-control-scale{display:none}
 }
+/* ---------- decisão do administrador sobre uma foto (remover do calor / incorporar / excluir) ---------- */
+.btn-dec{margin-top:6px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-texto,var(--accent));border-radius:6px;padding:3px 9px;font:600 11.5px var(--sans);cursor:pointer}
+.btn-dec:hover{background:var(--accent);color:var(--accent-ink)}
+.grid-th figure .btn-dec,.pp .fotos figure .btn-dec{margin-top:2px;padding:1px 6px;font-size:10.5px;width:100%}
+.item .btn-dec{margin-left:0}
+.dec-painel{position:fixed;z-index:1700;right:16px;top:16px;bottom:16px;width:380px;max-width:calc(100vw - 32px);overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-top:4px solid var(--va-amarelo,var(--accent));border-radius:12px;box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px}
+.dec-painel[hidden]{display:none}
+.dec-cab{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.dec-cab h3{margin:2px 0 0;font-size:13px;word-break:break-all}
+.dec-eyebrow{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:700}
+.dec-foto{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--panel-2)}
+.dec-painel .tag{padding:6px 9px;border-radius:8px;font-size:12px;font-weight:600;margin:0}
+.dec-bloco{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.dec-bloco b{font-size:13px}
+.dec-bloco .hint,.dec-perigo .hint{margin:0;font-size:12px;color:var(--ink-2)}
+.dec-sug{margin:0;font-size:12.5px;background:var(--panel-2);border-radius:7px;padding:7px 9px}
+.dec-linha{display:flex;gap:6px;flex-wrap:wrap}
+.dec-linha select{flex:1 1 140px;width:auto}
+.dec-linha input{flex:1 1 100px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font:13px var(--mono);min-width:0;color:var(--ink)}
+.dec-perigo{border:1px solid var(--bad);border-radius:10px;padding:8px 10px}
+.dec-perigo summary{cursor:pointer;color:var(--bad);font-weight:600;font-size:12.5px}
+.dec-perigo p{font-size:12.5px;margin:8px 0}
+.dec-perigo input[type=text]{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;width:100%;color:var(--ink)}
+.dec-perigo .chk{margin:8px 0}
+.btn.perigo{color:var(--bad);border-color:var(--bad)}
+.btn.perigo:not(:disabled):hover{background:var(--bad);color:#fff}
+.dec-msg{margin:0;font-size:12.5px;min-height:1.2em}
+.dec-msg.ok{color:var(--ok)} .dec-msg.erro{color:var(--bad)}
+.dec-hist summary{cursor:pointer;font-size:12px;color:var(--ink-2)}
+.dec-hist ul{margin:6px 0 0;padding-left:16px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.dec-hist li span{display:block;color:var(--ink-3);font-size:11px}

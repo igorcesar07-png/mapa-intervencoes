@@ -55,7 +55,7 @@ async function carregar(enquadrar){
   S.todos = j.registros.sort((a,b) => (a.data||"9999").localeCompare(b.data||"9999") || a.arquivo.localeCompare(b.arquivo));
   S.porId = new Map(S.todos.map(r => [r.id, r]));
   S.derivado = new Map(S.todos.map(r => { const d = r.d || {}; if (d.est != null) d.x = d.est/1000; r._dup = d.dup || null; return [r.id, d]; }));
-  S.grupos = j.grupos;
+  S.grupos = j.grupos; S.excluidas = j.excluidas || [];
   statusEixo(); montarFiltros(); desenhar();
   if (enquadrar) enquadrarMapa();
 }
@@ -321,10 +321,10 @@ function desenhar(){
   if (ADMIN){
     $("#anomList").innerHTML = anom.length ? anom.map(r => `
       <div class="item bad" data-id="${esc(r.id)}" tabindex="0"><img src="${mini(r.id)}" alt="" loading="lazy">
-        <div><b>${esc(der(r.id).motivo)}</b><span>${fmtData(r.data)} · ${esc(r.arquivo)}</span>${r.coord_revisada?'<br><span>coordenada corrigida na releitura do OCR</span>':''}${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}</div></div>`).join("")
+        <div><b>${esc(der(r.id).motivo)}</b><span>${fmtData(r.data)} · ${esc(r.arquivo)}</span>${r.coord_revisada?'<br><span>coordenada corrigida na releitura do OCR</span>':''}${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}${botaoDecidir(r.id, "Resolver")}</div></div>`).join("")
       : `<p class="hint" style="margin:0">Nenhuma inconsistência no filtro atual.</p>`;
     $("#anomList").querySelectorAll(".item").forEach(el => el.onclick = () => focar(el.dataset.id));
-    const fig = (r, cap) => `<figure><img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="" loading="lazy"><figcaption class="mot">${cap}</figcaption>${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}</figure>`;
+    const fig = (r, cap) => `<figure><img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="" loading="lazy"><figcaption class="mot">${cap}</figcaption>${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}${botaoDecidir(r.id, "Resolver")}</figure>`;
     const f = filtros();
     const sem = regs.filter(r => r.lat == null);
     const outros = S.todos.filter(r => r.classe === "outro" && !r._dup && (!f.lote || r.lote === f.lote));
@@ -335,7 +335,16 @@ function desenhar(){
     $("#semGrid").innerHTML = sem.map(r => fig(r, `${fmtData(r.data)}${r.classe ? " · " + esc(r.classe) : ""}`)).join("");
     $("#outGrid").innerHTML = outros.map(r => fig(r, esc(r.motivo_exclusao || "não relacionada"))).join("");
     $("#antGrid").innerHTML = fotosAntes.map(r => fig(r, fmtData(r.data))).join("");
-    $("#semInfo").textContent = `${sem.length + outros.length + fotosAntes.length} foto(s)`;
+    const removidas = S.todos.filter(r => der(r.id).removida && passa(r, f));
+    if ($("#remGrid")){
+    $("#remSum").innerHTML = `Removidas do mapa de calor: <b>${removidas.length}</b> foto(s)`;
+    $("#remGrid").innerHTML = removidas.map(r => fig(r, `${fmtData(r.data)} · fora do calor`)).join("");
+    const exc = (S.excluidas || []).filter(e => !f.lote || e.lote === f.lote);
+    $("#excSum").innerHTML = `Excluídas: <b>${exc.length}</b> foto(s)`;
+    $("#excGrid").innerHTML = exc.map(e => `<figure><img src="${mini(e.id)}" data-full="${grande(e.id)}" alt="" loading="lazy"><figcaption class="mot">${fmtData(e.data)}${e.motivo ? " · " + esc(e.motivo) : ""}</figcaption>${botaoDecidir(e.id, "Restaurar")}</figure>`).join("")
+      || '<p class="hint" style="margin:4px 0">Nenhuma foto excluída.</p>';
+    }
+    $("#semInfo").textContent = `${sem.length + outros.length + fotosAntes.length + removidas.length} foto(s)`;
   }
   graficoKm(tapados.map(g => S.porId.get(g.rep)));
   graficoDia(tapados.map(g => S.porId.get(g.rep)));
@@ -457,6 +466,8 @@ function popup(r, semFoto){
   const d = S.derivado.get(r.id) || {};
   const tags = [];
   if (d.anomalia) tags.push(`<span class="tag bad">Inconsistência · ${esc(d.motivo)}</span>`);
+  if (d.incorporada) tags.push(`<span class="tag info">Incorporada pelo administrador na estaca ${d.est != null ? fmtEst(d.est) : "—"}${r.coord_original && r.coord_original[0] != null ? ` (coordenada da foto: ${r.coord_original[0].toFixed(6)}, ${r.coord_original[1].toFixed(6)})` : " (foto sem coordenada)"}</span>`);
+  if (d.removida) tags.push(`<span class="tag warn">Removida do mapa de calor pelo administrador</span>`);
   if (d.travado && !d.anomalia) tags.push(`<span class="tag warn">Mesma coordenada de outra foto em outro horário</span>`);
   if (r.coord_revisada) tags.push(`<span class="tag warn">Coordenada corrigida (OCR)</span>`);
   if (r.data_revisada) tags.push(`<span class="tag warn">Data corrigida (OCR leu ${esc(fmtData(r.data_ocr_original))})</span>`);
@@ -469,7 +480,7 @@ function popup(r, semFoto){
     ${tags.join("")}
     <table>
       <tr><td>Data</td><td><b>${fmtData(r.data)}</b> <span style="color:var(--ink-3)">(${esc(r.data_fonte||"sem data")})</span></td></tr>
-      <tr><td>Coordenada</td><td class="mono">${r.lat.toFixed(6)}, ${r.lon.toFixed(6)}</td></tr>
+      <tr><td>Coordenada</td><td class="mono">${r.lat != null ? `${r.lat.toFixed(6)}, ${r.lon.toFixed(6)}` : "—"}</td></tr>
       <tr><td>Estaca</td><td>${kmTxt}</td></tr>
       ${r.km != null ? `<tr><td>No carimbo</td><td>km ${fmtNum(r.km, Number.isInteger(r.km) ? 0 : 3)}${Number.isInteger(r.km) ? ' <span style="color:var(--ink-3)">(km do app de câmera, pouco confiável)</span>' : ""}</td></tr>` : ""}
       ${r.rodovia||r.local ? `<tr><td>Local</td><td>${esc([r.rodovia, r.local, r.sentido].filter(Boolean).join(" · "))}</td></tr>` : ""}
@@ -479,6 +490,7 @@ function popup(r, semFoto){
     </table>
     ${ADMIN && r.texto_ocr ? `<details><summary>Texto lido no carimbo</summary><p>${esc(r.texto_ocr)}</p></details>` : ""}
     ${ADMIN && !semFoto && window.botaoAjuste ? window.botaoAjuste(r.id) : ""}
+    ${!semFoto ? botaoDecidir(r.id) : ""}
   </div>`;
 }
 /* dica ao passar o mouse: a foto que originou o ponto (a foto do buraco tapado), data e classificação */
@@ -521,10 +533,153 @@ function popupGrupo(g){
   const rot = c => c === "antes" ? "Antes" : c === "depois" ? "Tapado" : "";
   const cab = g.tapado ? `<span class="tag info">1 buraco · ${fotos.length} foto(s)</span>` : `<span class="tag warn">Sem foto do buraco tapado — fora do calor</span>`;
   return `<div class="pp">${cab}
-    <div class="fotos">${ord.map(f => `<figure><img src="${mini(f.id)}" data-full="${grande(f.id)}" alt="">${rot(f.classe) || f.data ? `<figcaption>${rot(f.classe)} ${(f.data||"").slice(11,16)}</figcaption>` : ""}${window.botaoAjuste ? window.botaoAjuste(f.id) : ""}</figure>`).join("")}</div>
+    <div class="fotos">${ord.map(f => `<figure><img src="${mini(f.id)}" data-full="${grande(f.id)}" alt="">${rot(f.classe) || f.data ? `<figcaption>${rot(f.classe)} ${(f.data||"").slice(11,16)}</figcaption>` : ""}${window.botaoAjuste ? window.botaoAjuste(f.id) : ""}${botaoDecidir(f.id, "Gerenciar")}</figure>`).join("")}</div>
     ${popup(rep, true).replace('<div class="pp">', "<div>")}
   </div>`;
 }
+
+/* ============================================================ decisão do administrador sobre uma foto
+   Remover do mapa de calor  -> a foto e o registro continuam guardados; só deixa de contar.
+   Incorporar numa estaca    -> vira ponto normal do mapa, na posição do eixo escolhida pelo administrador.
+   Excluir                   -> some de tudo (mapa, listas, relatórios, exportações), com confirmação;
+                                o original continua guardado e pode ser restaurado em "Excluídas".
+   Quem grava: o servidor (rota de decisão do administrador) ou, na cópia do GitHub Pages, o Firebase (ajustes.js). */
+
+const podeDecidir = () => ADMIN && (window.podeDecidir ? window.podeDecidir() : true);
+function botaoDecidir(id, rotulo){
+  return podeDecidir() ? `<button type="button" class="btn-dec" data-dec="${esc(id)}">${esc(rotulo || "Gerenciar")}</button>` : "";
+}
+function estParaPonto(bloco, est){
+  const b = S.tracado.blocos[bloco]; if (!b) return null;
+  const pts = b.pts.filter(p => p[2] != null).sort((a, c) => a[2] - c[2]);
+  if (!pts.length || est < pts[0][2] - 50 || est > pts.at(-1)[2] + 50) return null;
+  for (let i = 0; i < pts.length - 1; i++){
+    const a = pts[i], c = pts[i+1];
+    if (est >= a[2] && est <= c[2]){ const t = c[2] === a[2] ? 0 : (est - a[2]) / (c[2] - a[2]); return [a[0] + t*(c[0]-a[0]), a[1] + t*(c[1]-a[1])]; }
+  }
+  const q = est < pts[0][2] ? pts[0] : pts.at(-1); return [q[0], q[1]];
+}
+const lerEstaca = t => { const m = String(t || "").trim().match(/^(\d{1,4})\s*\+\s*(\d{1,3})$/); return m ? +m[1]*1000 + +m[2] : null; };
+let _prevMarca = null;
+function marcarPrevia(p){
+  if (_prevMarca){ mapa.removeLayer(_prevMarca); _prevMarca = null; }
+  if (p) _prevMarca = L.circleMarker(p, {radius:9, weight:3, color:"#F6D200", fillColor:"#273896", fillOpacity:.9}).addTo(mapa);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-dec]");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation(); abrirDecisao(b.dataset.dec);
+}, true);
+
+function situacaoFoto(r, d){
+  if (d.incorporada) return {txt:`Incorporada ao mapa na estaca ${fmtEst(d.est)} · Bloco ${d.bloco}`, cls:"info"};
+  if (d.removida) return {txt:"Removida do mapa de calor (foto e registro guardados)", cls:"warn"};
+  if (r.lat == null) return {txt:"Sem coordenada — fora do mapa", cls:"warn"};
+  if (r._dup) return {txt:"Repetida (duplicata) — fora do mapa", cls:"warn"};
+  if (r.classe === "outro") return {txt:"Não relacionada — fora do mapa", cls:"warn"};
+  if (d.anomalia) return {txt:`Inconsistência: ${d.motivo || ""}`, cls:"bad"};
+  const g = S.grupos.find(x => x.id === d.grupo);
+  if (g && !g.tapado) return {txt:"Buraco sem foto de tapado — fora do calor", cls:"warn"};
+  return {txt:"No mapa de calor (ponto normal)", cls:"info"};
+}
+function abrirDecisao(id, aviso){
+  const exc = (S.excluidas || []).find(e => e.id === id);
+  const r = S.porId.get(id);
+  if (!r && !exc) return;
+  let el = $("#decPainel");
+  if (!el){ el = document.createElement("aside"); el.id = "decPainel"; el.className = "dec-painel"; el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", "Decisão sobre a foto"); document.body.appendChild(el); }
+  el.hidden = false;
+  const fechar = () => { el.hidden = true; marcarPrevia(null); };
+  const cab = (sit, cls) => `<div class="dec-cab"><div><span class="dec-eyebrow">Decisão do administrador</span><h3>${esc((r || exc).arquivo)}</h3></div>
+      <button type="button" class="btn" id="decFechar" aria-label="Fechar">✕</button></div>
+    <img class="dec-foto" src="${mini(id)}" data-full="${grande(id)}" alt="">
+    <p class="tag ${cls}" style="display:block">${esc(sit)}</p>`;
+  if (exc){
+    el.innerHTML = cab(`Excluída${exc.motivo ? " · " + exc.motivo : ""} — fora do mapa, das listas e dos relatórios`, "bad") + `
+      <div class="dec-bloco"><b>Restaurar</b><p class="hint">A foto volta a ser tratada pelas regras do mapa, como antes de ser excluída.</p>
+      <button type="button" class="btn pri" id="decRestaurar">Restaurar foto</button></div>
+      <p class="dec-msg" id="decMsg" role="status">${aviso ? esc(aviso) : ""}</p><div id="decHist"></div>`;
+  } else {
+    const d = S.derivado.get(id) || {}, sit = situacaoFoto(r, d);
+    const blocos = Object.keys(S.tracado.blocos).sort(ordBloco);
+    // sugestão: só o que os dados permitem; nunca é aplicada sem o administrador confirmar
+    let sug = null, sugTxt;
+    if (d.incorporada) sugTxt = `Posição atual escolhida: <b>${fmtEst(d.est)}</b> · Bloco ${esc(d.bloco)}.`;
+    else if (r.lat != null && d.est != null && d.bloco != null){
+      sug = {est:Math.round(d.est/10)*10, bloco:String(d.bloco)};
+      sugTxt = `Sugestão: <b>${fmtEst(sug.est)}</b> · Bloco ${esc(sug.bloco)} — estaca mais próxima da coordenada da foto (${fmtNum(d.dist)} m do eixo).`
+        + (d.travado ? " <b>Atenção:</b> essa coordenada se repete em outra foto de outro horário (GPS travado), então pode estar errada." : "")
+        + (d.dist > 1000 ? " A foto está longe do eixo: confira antes de usar." : "");
+    } else sugTxt = r.lat == null ? "Sem coordenada na foto: não há sugestão. Informe a estaca." : "Não há estaca próxima para sugerir. Informe a estaca.";
+    if (r.km != null && !d.incorporada) sugTxt += ` <span class="hint">No carimbo: km ${fmtNum(r.km, Number.isInteger(r.km) ? 0 : 3)} (app de câmera, pouco confiável).</span>`;
+    const decidida = d.incorporada || d.removida;
+    const grupo = S.grupos.find(x => x.id === d.grupo);
+    const efeitoExc = grupo && grupo.tapado && grupo.fotos.length === 1 ? "O buraco desta foto deixa de contar no mapa de calor, nos gráficos e nos totais."
+      : grupo && grupo.tapado ? `O buraco continua no mapa com as outras ${grupo.fotos.length - 1} foto(s).` : "Ela não conta hoje no mapa de calor.";
+    el.innerHTML = cab(sit.txt, sit.cls) + `
+      <div class="dec-bloco"><b>Remover do mapa de calor</b>
+        <p class="hint">Sai do mapa, do calor, dos gráficos e dos relatórios. A foto e o registro <b>continuam guardados</b> e dá para desfazer.</p>
+        <button type="button" class="btn" id="decRemover" ${d.removida ? "disabled" : ""}>${d.removida ? "Já removida do mapa de calor" : "Remover do mapa de calor"}</button></div>
+      <div class="dec-bloco"><b>${d.incorporada ? "Mudar a estaca" : "Incorporar ao mapa de calor"}</b>
+        <p class="hint">Vira um ponto normal do mapa, no eixo da rodovia na estaca escolhida: entra no calor, nos filtros, nos gráficos e nas exportações.</p>
+        <p class="dec-sug">${sugTxt}</p>
+        <div class="dec-linha"><select id="decBloco" aria-label="Bloco">${blocos.map(b => `<option value="${esc(b)}" ${String(d.incorporada ? d.bloco : (sug && sug.bloco)) === b ? "selected" : ""}>Bloco ${esc(b)}${S.tracado.blocos[b].rodovia ? " · " + esc(S.tracado.blocos[b].rodovia) : ""}</option>`).join("")}</select>
+          <input type="text" id="decEst" inputmode="numeric" placeholder="ex.: 250+930" aria-label="Estaca" value="${d.incorporada ? fmtEst(d.est) : ""}">
+          ${sug ? `<button type="button" class="btn ghost" id="decUsarSug">Usar sugestão</button>` : ""}</div>
+        <p class="hint" id="decPrevia"></p>
+        <button type="button" class="btn pri" id="decIncorporar" ${blocos.length ? "" : "disabled"}>${d.incorporada ? "Salvar nova estaca" : "Incorporar nesta estaca"}</button></div>
+      ${decidida ? `<div class="dec-bloco"><button type="button" class="btn ghost" id="decDesfazer">Desfazer a decisão</button>
+        <p class="hint">A foto volta a ser tratada pelas regras automáticas${r.coord_original ? ", na coordenada original" : ""}.</p></div>` : ""}
+      <details class="dec-perigo"><summary>Excluir a foto do sistema…</summary>
+        <p>Diferente de remover do mapa de calor: a foto <b>some de tudo</b> — mapa, listas de revisão, gráficos, relatórios e exportações. ${efeitoExc}</p>
+        <p class="hint">O arquivo original e o registro continuam guardados e podem ser restaurados na lista "Excluídas".</p>
+        <label class="f">Motivo (opcional)<input type="text" id="decMotivo" maxlength="200" placeholder="ex.: foto de outra obra"></label>
+        <label class="chk"><input type="checkbox" id="decConfirma"> Confirmo que quero excluir esta foto</label>
+        <button type="button" class="btn perigo" id="decExcluir" disabled>Excluir foto</button></details>
+      <p class="dec-msg" id="decMsg" role="status">${aviso ? esc(aviso) : ""}</p><div id="decHist"></div>`;
+    const previa = () => {
+      const est = lerEstaca($("#decEst").value), bl = $("#decBloco").value, out = $("#decPrevia");
+      if (est == null){ out.textContent = ""; marcarPrevia(null); return null; }
+      const p = estParaPonto(bl, est);
+      if (!p){ out.textContent = `A estaca ${fmtEst(est)} não está no eixo do Bloco ${bl}.`; marcarPrevia(null); return null; }
+      out.textContent = `Ponto no eixo: ${p[0].toFixed(6)}, ${p[1].toFixed(6)} (marcado no mapa em amarelo).`; marcarPrevia(p);
+      return {est, bloco:bl};
+    };
+    $("#decEst").oninput = previa; $("#decBloco").onchange = previa; previa();
+    if ($("#decUsarSug")) $("#decUsarSug").onclick = () => { $("#decBloco").value = sug.bloco; $("#decEst").value = fmtEst(sug.est); const p = previa(); if (p) mapa.flyTo(estParaPonto(p.bloco, p.est), Math.max(mapa.getZoom(), 15), {duration:.6}); };
+    $("#decRemover").onclick = () => fazer({acao:"remover"}, "Removida do mapa de calor. A foto continua guardada.");
+    $("#decIncorporar").onclick = () => {
+      const v = previa();
+      if (!v) return msg(lerEstaca($("#decEst").value) == null ? "Informe a estaca no formato km+metros, ex.: 250+930." : $("#decPrevia").textContent, "erro");
+      fazer({acao:"incorporar", est:v.est, bloco:v.bloco}, `Incorporada ao mapa de calor na estaca ${fmtEst(v.est)} · Bloco ${v.bloco}.`);
+    };
+    if ($("#decDesfazer")) $("#decDesfazer").onclick = () => fazer({acao:"desfazer"}, "Decisão desfeita.");
+    $("#decConfirma").onchange = e => { $("#decExcluir").disabled = !e.target.checked; };
+    $("#decExcluir").onclick = () => fazer({acao:"excluir", confirmar:true, motivo:$("#decMotivo").value.trim()}, "Foto excluída. Ela pode ser restaurada na lista \"Excluídas\".");
+  }
+  function msg(t, tipo){ const m = $("#decMsg"); m.textContent = t; m.className = "dec-msg " + (tipo || ""); }
+  async function fazer(corpo, ok){
+    el.querySelectorAll("button,input,select").forEach(x => x.disabled = true); msg("Salvando…");
+    try{ await window.salvarDecisao(id, corpo); marcarPrevia(null); abrirDecisao(id, ok); $("#decMsg").className = "dec-msg ok"; toast(ok); }
+    catch(err){ el.querySelectorAll("button,input,select").forEach(x => x.disabled = false); if ($("#decExcluir")) $("#decExcluir").disabled = !$("#decConfirma").checked; msg(err.message, "erro"); }
+  }
+  $("#decFechar").onclick = fechar;
+  if ($("#decRestaurar")) $("#decRestaurar").onclick = () => fazer({acao:"restaurar"}, "Foto restaurada.");
+  // histórico desta foto (quem decidiu o quê e quando)
+  Promise.resolve(window.historicoFoto(id)).then(h => {
+    const box = $("#decHist"); if (!box || !h || !h.length) return;
+    const ROT = {decisao_remover:"Removida do mapa de calor", decisao_incorporar:"Incorporada numa estaca", decisao_desfazer:"Decisão desfeita",
+      decisao_excluir:"Excluída", decisao_restaurar:"Restaurada", classificou_foto:"Classificação", corrigiu_data_foto:"Data corrigida"};
+    box.innerHTML = `<details class="dec-hist"><summary>Histórico (${h.length})</summary><ul>${h.map(x => {
+      const dp = (x.detalhe || {}).depois || {};
+      const extra = x.acao === "decisao_incorporar" && dp.est != null ? ` · ${fmtEst(dp.est)} · Bloco ${esc(dp.bloco)}` : "";
+      return `<li><b>${esc(ROT[x.acao] || x.acao)}</b>${extra}<span>${fmtData(x.quando)}${x.por ? " · " + esc(x.por) : ""}</span></li>`;
+    }).join("")}</ul></details>`;
+  }).catch(() => {});
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("#decPainel") && !$("#decPainel").hidden){ $("#decPainel").hidden = true; marcarPrevia(null); } });
+
 function focar(id){
   const r = S.porId.get(id), m = marcadores.get(id);
   if (!r) return;
@@ -709,16 +864,16 @@ if ($("#btnCsv")) $("#btnCsv").onclick = () => {
   // mesmo CSV do sistema (administrador): todas as fotos do filtro, com situação e motivo
   const num = v => v == null ? "" : String(v).replace(".", ",");
   const f = filtros(), gp = new Map(S.grupos.map(g => [g.id, g]));
-  const cab = ["arquivo","data","fonte_data","latitude","longitude","bloco","estaca","km","rodovia","local","sentido","lote","dist_eixo_m","classe","situacao","inconsistencia","motivo","duplicata","buraco"];
+  const cab = ["arquivo","data","fonte_data","latitude","longitude","bloco","estaca","km","rodovia","local","sentido","lote","dist_eixo_m","classe","situacao","inconsistencia","motivo","duplicata","buraco","decisao_admin"];
   const linhas = [cab.join(";")];
   const regs = S.todos.filter(r => passa(r, f)).sort((a, b) => (a.data||"9999").localeCompare(b.data||"9999") || a.arquivo.localeCompare(b.arquivo));
   for (const r of regs){
     const d = S.derivado.get(r.id) || {}, rod = (S.tracado.blocos[d.bloco]||{}).rodovia || r.rodovia || "";
-    const sit = r.lat == null ? "sem coordenada" : d.dup ? "duplicata" : r.classe === "outro" ? "não relacionada" : d.anomalia ? "inconsistência"
+    const sit = r.lat == null ? "sem coordenada" : d.dup ? "duplicata" : r.classe === "outro" ? "não relacionada" : d.removida ? "removida do mapa de calor" : d.anomalia ? "inconsistência"
       : d.grupo && gp.get(d.grupo) && !gp.get(d.grupo).tapado ? "buraco sem foto de tapado" : d.rep ? "válida" : "foto extra do mesmo buraco";
     linhas.push([r.arquivo, (r.data||"").replace("T"," "), r.data_fonte||"", num(r.lat), num(r.lon), d.bloco||"",
       d.est != null ? fmtEst(d.est) : "", d.est != null ? num((d.est/1000).toFixed(3)) : "", rod, r.local||"", r.sentido||"", r.lote||"",
-      d.dist != null ? Math.round(d.dist) : "", r.classe||"", sit, d.anomalia ? "sim" : "não", d.motivo||"", d.dup ? "sim" : "", d.grupo||""]
+      d.dist != null ? Math.round(d.dist) : "", r.classe||"", sit, d.anomalia ? "sim" : "não", d.motivo||"", d.dup ? "sim" : "", d.grupo||"", d.incorporada ? "incorporada na estaca" : d.removida ? "removida do mapa de calor" : ""]
       .map(v => /[;"\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : v).join(";"));
   }
   const url = URL.createObjectURL(new Blob(["\ufeff" + linhas.join("\r\n")], {type:"text/csv;charset=utf-8"}));
