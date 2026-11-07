@@ -513,3 +513,81 @@ def test_marca_publica_sem_login_e_recursos_protegidos(app):
     assert c.get("/recursos/relatorio.js").status_code in (302, 401, 403)
     pagina = c.get("/login").get_data(as_text=True)
     assert "/marca/via-araucaria-logo.png" in pagina and "Overpass" in pagina
+
+
+# ------------------------------------------------------------------ decisão do administrador sobre inconsistências
+def _decidir(c, foto_id, **corpo):
+    return c.post(f"/api/admin/fotos/{foto_id}/decisao", json=corpo, headers={"X-CSRF-Token": c.csrf})
+
+
+def test_decisao_incorporar_remover_excluir_restaurar(app):
+    _semear(app)
+    adm = entrar(app, "adm@teste.com", SENHA_ADM)
+    vis = entrar(app, "vis@teste.com", SENHA_VIS)
+    anom, sem = f"{5:016x}", f"{6:016x}"
+    rel = adm.get("/api/relatorio").get_json()
+    d5 = next(r for r in rel["registros"] if r["id"] == anom)["d"]
+    assert d5["anomalia"] and d5.get("est") is not None          # sugestão disponível (estaca mais próxima)
+    n_tapados = sum(1 for gp in rel["grupos"] if gp["tapado"])
+
+    # só administrador, com CSRF, e estaca precisa estar no eixo
+    assert _decidir(vis, anom, acao="remover").status_code == 403
+    assert adm.post(f"/api/admin/fotos/{anom}/decisao", json={"acao": "remover"}).status_code in (400, 403)
+    assert _decidir(adm, anom, acao="incorporar", bloco="2", est=999999).status_code == 400
+    assert _decidir(adm, anom, acao="incorporar", bloco="9", est=100500).status_code == 400
+    assert _decidir(adm, sem, acao="incorporar", bloco="2").status_code == 400      # sem estaca: nada automático
+
+    # incorporar: vira ponto normal na estaca escolhida, sai das inconsistências, entra no calor e no visualizador
+    r = _decidir(adm, anom, acao="incorporar", bloco="2", est=100500)
+    assert r.status_code == 200, r.get_json()
+    rel = adm.get("/api/relatorio").get_json()
+    reg = next(x for x in rel["registros"] if x["id"] == anom)
+    assert not reg["d"]["anomalia"] and reg["d"]["incorporada"] and reg["d"]["est"] == 100500 and reg["d"]["bloco"] == "2"
+    assert reg["coord_original"] == [-25.05, -49.95] and abs(reg["lat"] + 25.0) < 1e-6
+    assert sum(1 for gp in rel["grupos"] if gp["tapado"]) == n_tapados + 1
+    assert any(x["id"] == anom for x in vis.get("/api/relatorio").get_json()["registros"])
+    csv = adm.get("/api/exportar.csv").get_data(as_text=True)
+    assert "incorporada na estaca" in csv
+    # o registro original não muda
+    con = conectar(app.config["MAPA"].DB_PATH)
+    assert tuple(con.execute("SELECT lat, lon FROM fotos WHERE id=?", (anom,)).fetchone()) == (-25.05, -49.95)
+
+    # foto sem coordenada também pode ser incorporada, com a estaca informada
+    assert _decidir(adm, sem, acao="incorporar", bloco="2", est=101000).status_code == 200
+    reg = next(x for x in adm.get("/api/relatorio").get_json()["registros"] if x["id"] == sem)
+    assert reg["lat"] is not None and reg["d"]["incorporada"]
+
+    # remover do mapa de calor: fica guardada, não é inconsistência, não conta
+    travado = f"{8:016x}"
+    assert _decidir(adm, travado, acao="remover").status_code == 200
+    rel = adm.get("/api/relatorio").get_json()
+    reg = next(x for x in rel["registros"] if x["id"] == travado)
+    assert reg["d"]["removida"] and not reg["d"]["anomalia"] and not reg["d"].get("grupo")
+    assert not any(x["id"] == travado for x in vis.get("/api/relatorio").get_json()["registros"])
+    assert "removida do mapa de calor" in adm.get("/api/exportar.csv").get_data(as_text=True)
+    assert con.execute("SELECT COUNT(*) FROM fotos WHERE id=?", (travado,)).fetchone()[0] == 1
+
+    # excluir exige confirmação; some de tudo, mas o original fica e dá para restaurar
+    assert _decidir(adm, travado, acao="excluir").status_code == 400
+    assert _decidir(adm, travado, acao="excluir", confirmar=True, motivo="foto de teste").status_code == 200
+    rel = adm.get("/api/relatorio").get_json()
+    assert not any(x["id"] == travado for x in rel["registros"])
+    assert rel["excluidas"][0]["id"] == travado and rel["excluidas"][0]["motivo"] == "foto de teste"
+    assert "GPS_TRAVADO_A.jpg" not in adm.get("/api/exportar.csv").get_data(as_text=True)
+    assert adm.get(f"/api/fotos/{travado}/miniatura").status_code == 200       # administrador ainda vê para restaurar
+    assert vis.get(f"/api/fotos/{travado}/miniatura").status_code == 404
+    assert con.execute("SELECT COUNT(*) FROM fotos WHERE id=?", (travado,)).fetchone()[0] == 1
+    assert _decidir(adm, travado, acao="restaurar").status_code == 200
+    reg = next(x for x in adm.get("/api/relatorio").get_json()["registros"] if x["id"] == travado)
+    assert reg["d"]["removida"]                                              # volta como estava antes de excluir
+
+    # desfazer: volta às regras automáticas (inconsistência de novo)
+    assert _decidir(adm, anom, acao="desfazer").status_code == 200
+    reg = next(x for x in adm.get("/api/relatorio").get_json()["registros"] if x["id"] == anom)
+    assert reg["d"]["anomalia"] and not reg["d"].get("incorporada") and "coord_original" not in reg
+
+    # histórico com antes e depois
+    h = adm.get(f"/api/admin/fotos/{anom}/historico").get_json()["historico"]
+    assert [x["acao"] for x in h] == ["decisao_desfazer", "decisao_incorporar"]
+    assert h[1]["detalhe"]["depois"]["est"] == 100500
+    con.close()
