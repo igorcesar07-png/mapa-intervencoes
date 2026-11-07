@@ -115,6 +115,25 @@ const gPontos = L.layerGroup().addTo(mapa), gAnom = L.layerGroup().addTo(mapa);
 let calor = null;
 const marcadores = new Map();
 
+/* ============================================================ painel de detalhes no ponto
+   Com mouse: passar o ponteiro abre o painel; clicar fixa (fica aberto até fechar no ×).
+   Sem mouse (celular, tablet): tocar no ponto abre o painel, que fica aberto até tocar no × ou no mapa. */
+const TEM_HOVER = !!(window.matchMedia && matchMedia("(hover: hover) and (pointer: fine)").matches);
+let _fixo = null, _fecharT = null;
+function painelNoHover(m){
+  if (!TEM_HOVER) return;
+  const agendarFechar = () => { clearTimeout(_fecharT); _fecharT = setTimeout(() => { if (_fixo !== m && m.isPopupOpen()) m.closePopup(); }, 400); };
+  m.on("mouseover", () => { clearTimeout(_fecharT); if (_fixo && _fixo !== m && _fixo.isPopupOpen()) return; if (!m.isPopupOpen()) m.openPopup(); });
+  m.on("mouseout", () => { if (_fixo !== m) agendarFechar(); });
+  m.on("click", () => { _fixo = m; if (!m.isPopupOpen()) m.openPopup(); });
+  m.on("popupopen", e => {
+    const el = e.popup.getElement(); if (!el) return;
+    el.onmouseenter = () => clearTimeout(_fecharT);
+    el.onmouseleave = () => { if (_fixo !== m) agendarFechar(); };
+  });
+  m.on("popupclose", () => { if (_fixo === m) _fixo = null; });
+}
+
 /* ============================================================ eixo */
 function ordBloco(a, b){ return (parseFloat(a)||999) - (parseFloat(b)||999) || a.localeCompare(b); }
 const corBloco = id => COR_BLOCO[Object.keys(S.tracado.blocos).sort(ordBloco).indexOf(id) % COR_BLOCO.length];
@@ -302,8 +321,9 @@ function desenhar(){
       const raio = g.fotos.length > 1 ? 5.5 : 4.5;
       const m = L.circleMarker([g.lat, g.lon], {renderer:render, radius:raio, _raioBase:raio, weight:1.2, color:"#fff",
         fillColor:g.tapado ? "#1f6feb" : "#8b8e95", fillOpacity:.9});
-      m.bindPopup(() => popupGrupo(g), {maxWidth:300});
-      m.bindTooltip(() => dicaGrupo(g), {direction:"top", offset:[0,-8], opacity:1, className:"dica-foto"});
+      m.bindPopup(() => popupGrupo(g), {maxWidth:300, autoPan:!TEM_HOVER});
+      if (!TEM_HOVER) m.bindTooltip(() => dicaGrupo(g), {direction:"top", offset:[0,-8], opacity:1, className:"dica-foto"});
+      painelNoHover(m);
       m.addTo(gPontos);
       for (const id of g.fotos) marcadores.set(id, m);
     }
@@ -312,8 +332,8 @@ function desenhar(){
   if (ADMIN && marcado("#lAnom")){
     for (const r of anom){
       const m = L.marker([r.lat, r.lon], {icon:L.divIcon({className:"", html:'<div class="anom-icon"></div>', iconSize:[18,18]}), zIndexOffset:1000});
-      m.bindPopup(() => popup(r), {maxWidth:290});
-      m.bindTooltip(() => dicaFoto(r, `Inconsistência · ${der(r.id).motivo || ""}`), {direction:"top", offset:[0,-10], opacity:1, className:"dica-foto"});
+      m.bindPopup(() => popup(r), {maxWidth:290, autoPan:!TEM_HOVER});
+      painelNoHover(m);
       m.addTo(gAnom); marcadores.set(r.id, m);
     }
   }
@@ -473,19 +493,25 @@ function popup(r, semFoto){
   if (r.data_revisada) tags.push(`<span class="tag warn">Data corrigida (OCR leu ${esc(fmtData(r.data_ocr_original))})</span>`);
   if (r.data_suspeita) tags.push(`<span class="tag warn">Data do carimbo posterior ao envio — conferir</span>`);
   if (r.data_fonte === "nome_arquivo") tags.push(`<span class="tag warn">Data do envio, não da foto</span>`);
+  for (const dv of (r.divergencias || [])) tags.push(`<span class="tag warn">Aguardando revisão: ${esc(dv.msg)}</span>`);
   const b = d.bloco != null ? S.tracado.blocos[d.bloco] : null;
-  const kmTxt = d.est != null ? `<b>${fmtEst(d.est)}</b> · Bloco ${esc(d.bloco)}${b?.rodovia ? " · " + esc(b.rodovia) : ""}` : "—";
+  const ND = '<span class="nd">não identificado</span>';
+  const kmTxt = d.est != null ? `<b>${fmtEst(d.est)}</b>` : ND;
+  const rodTxt = b?.rodovia || r.rodovia;
   return `<div class="pp">
     ${!semFoto ? `<img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="Foto da intervenção">` : ""}
     ${tags.join("")}
     <table>
-      <tr><td>Data</td><td><b>${fmtData(r.data)}</b> <span style="color:var(--ink-3)">(${esc(r.data_fonte||"sem data")})</span></td></tr>
-      <tr><td>Coordenada</td><td class="mono">${r.lat != null ? `${r.lat.toFixed(6)}, ${r.lon.toFixed(6)}` : "—"}</td></tr>
+      <tr><td>Data e hora</td><td>${r.data ? `<b>${fmtData(r.data)}</b> <span style="color:var(--ink-3)">(${esc(r.data_fonte||"")})</span>` : ND}</td></tr>
+      <tr><td>Coordenadas</td><td class="mono">${r.lat != null ? `${r.lat.toFixed(6)}, ${r.lon.toFixed(6)}` : ND}</td></tr>
+      <tr><td>Rodovia</td><td>${rodTxt ? esc(rodTxt) : ND}</td></tr>
+      <tr><td>Lote / bloco</td><td>${d.bloco != null ? esc(String(d.bloco).padStart(2, "0")) : ND}</td></tr>
       <tr><td>Estaca</td><td>${kmTxt}</td></tr>
       ${r.km != null ? `<tr><td>No carimbo</td><td>km ${fmtNum(r.km, Number.isInteger(r.km) ? 0 : 3)}${Number.isInteger(r.km) ? ' <span style="color:var(--ink-3)">(km do app de câmera, pouco confiável)</span>' : ""}</td></tr>` : ""}
-      ${r.rodovia||r.local ? `<tr><td>Local</td><td>${esc([r.rodovia, r.local, r.sentido].filter(Boolean).join(" · "))}</td></tr>` : ""}
+      ${r.local||r.sentido ? `<tr><td>Local</td><td>${esc([r.local, r.sentido].filter(Boolean).join(" · "))}</td></tr>` : ""}
       ${d.dist != null ? `<tr><td>Ao eixo</td><td>${fmtNum(d.dist)} m</td></tr>` : ""}
-      <tr><td>Lote</td><td>${esc(r.lote)}</td></tr>
+      <tr><td>Empresa</td><td>${r.empresa ? esc(r.empresa) : '<span class="nd">não informada</span>'}</td></tr>
+      <tr><td>Envio (ZIP)</td><td>${esc(r.lote)}</td></tr>
       <tr><td>Arquivo</td><td style="word-break:break-all;font-size:11.5px">${esc(r.arquivo)}</td></tr>
     </table>
     ${ADMIN && r.texto_ocr ? `<details><summary>Texto lido no carimbo</summary><p>${esc(r.texto_ocr)}</p></details>` : ""}
@@ -864,7 +890,7 @@ if ($("#btnCsv")) $("#btnCsv").onclick = () => {
   // mesmo CSV do sistema (administrador): todas as fotos do filtro, com situação e motivo
   const num = v => v == null ? "" : String(v).replace(".", ",");
   const f = filtros(), gp = new Map(S.grupos.map(g => [g.id, g]));
-  const cab = ["arquivo","data","fonte_data","latitude","longitude","bloco","estaca","km","rodovia","local","sentido","lote","dist_eixo_m","classe","situacao","inconsistencia","motivo","duplicata","buraco","decisao_admin"];
+  const cab = ["arquivo","data","fonte_data","latitude","longitude","bloco","estaca","km","rodovia","local","sentido","lote","dist_eixo_m","classe","situacao","inconsistencia","motivo","duplicata","buraco","decisao_admin","empresa"];
   const linhas = [cab.join(";")];
   const regs = S.todos.filter(r => passa(r, f)).sort((a, b) => (a.data||"9999").localeCompare(b.data||"9999") || a.arquivo.localeCompare(b.arquivo));
   for (const r of regs){
@@ -873,7 +899,7 @@ if ($("#btnCsv")) $("#btnCsv").onclick = () => {
       : d.grupo && gp.get(d.grupo) && !gp.get(d.grupo).tapado ? "buraco sem foto de tapado" : d.rep ? "válida" : "foto extra do mesmo buraco";
     linhas.push([r.arquivo, (r.data||"").replace("T"," "), r.data_fonte||"", num(r.lat), num(r.lon), d.bloco||"",
       d.est != null ? fmtEst(d.est) : "", d.est != null ? num((d.est/1000).toFixed(3)) : "", rod, r.local||"", r.sentido||"", r.lote||"",
-      d.dist != null ? Math.round(d.dist) : "", r.classe||"", sit, d.anomalia ? "sim" : "não", d.motivo||"", d.dup ? "sim" : "", d.grupo||"", d.incorporada ? "incorporada na estaca" : d.removida ? "removida do mapa de calor" : ""]
+      d.dist != null ? Math.round(d.dist) : "", r.classe||"", sit, d.anomalia ? "sim" : "não", d.motivo||"", d.dup ? "sim" : "", d.grupo||"", d.incorporada ? "incorporada na estaca" : d.removida ? "removida do mapa de calor" : "", r.empresa||""]
       .map(v => /[;"\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : v).join(";"));
   }
   const url = URL.createObjectURL(new Blob(["\ufeff" + linhas.join("\r\n")], {type:"text/csv;charset=utf-8"}));
