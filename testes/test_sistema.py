@@ -67,8 +67,8 @@ def zip_bytes(arquivos):
     return b.getvalue()
 
 
-def enviar(c, dados, nome="lote-teste.zip"):
-    return c.post("/api/admin/envios", data={"arquivo": (io.BytesIO(dados), nome)},
+def enviar(c, dados, nome="lote-teste.zip", empresa="Empresa Teste Ltda"):
+    return c.post("/api/admin/envios", data={"arquivo": (io.BytesIO(dados), nome), "empresa": empresa},
                   headers={"X-CSRF-Token": c.csrf}, content_type="multipart/form-data")
 
 
@@ -156,6 +156,30 @@ def test_fluxo_admin_envio_zip(app):
     guardado = app.config["MAPA"].ENVIOS_DIR / f"{sha}.zip"
     assert guardado.read_bytes() == dados and not (guardado.stat().st_mode & 0o222)
 
+    # importadas ficam na revisão (fora do mapa) até o administrador confirmar
+    assert c.get("/api/relatorio").get_json()["registros"] == []
+    fila = {e: c.get(f"/api/admin/revisao?estado={e}").get_json()["itens"] for e in ("aguardando", "pendente")}
+    auto = {i["arquivo"]: i for i in fila["aguardando"]}
+    assert set(auto) == {"WhatsApp Image 2026-10-22 at 15.05.37.jpeg", "WhatsApp Image 2026-10-22 at 20.14.14 (2).jpeg",
+                         "WhatsApp Image 2026-10-22 at 16.33.36.jpeg"}
+    # carimbo do app da concessionária: lote e estaca lidos na foto conferem com a coordenada
+    cb = auto["WhatsApp Image 2026-10-22 at 16.33.36.jpeg"]
+    assert cb["carimbo"]["lote"] == "2" and cb["carimbo"]["est"] == 182691 and cb["lote"] == "2" and cb["empresa"] == "Empresa Teste Ltda"
+    assert [i["arquivo"] for i in fila["pendente"]] == ["WhatsApp Image 2026-10-22 at 16.24.37.jpeg"]
+    assert not fila["pendente"][0]["sugestao"]          # sem dados: nada é atribuído automaticamente
+    # a mesma intervenção reenviada com outro arquivo (bytes diferentes, mesmo carimbo): pendente como provável reenvio
+    from PIL import Image as _I
+    im = _I.open(AMOSTRAS / "WhatsApp Image 2026-10-22 at 16.33.36.jpeg"); bb = io.BytesIO(); im.save(bb, "JPEG", quality=80)
+    r3 = enviar(c, zip_bytes([("reenvio.jpg", bb.getvalue())]), "reenvio.zip")
+    esperar(c, r3.get_json()["envio_id"])
+    pend = c.get("/api/admin/revisao?estado=pendente").get_json()["itens"]
+    assert any(i["arquivo"] == "reenvio.jpg" and any(d["campo"] == "duplicata" for d in i["divergencias"]) for i in pend)
+    fila["pendente"] = [i for i in pend if i["arquivo"] != "reenvio.jpg"]
+    rc = c.post(f"/api/admin/envios/{env['id']}/confirmar", headers={"X-CSRF-Token": c.csrf}).get_json()
+    for i in fila["pendente"]:
+        if i["sugestao"]:
+            assert c.post(f"/api/admin/revisao/{i['foto_id']}", json={"acao": "confirmar", "usar_sugestao": True},
+                          headers={"X-CSRF-Token": c.csrf}).status_code == 200
     rel = c.get("/api/relatorio").get_json()
     regs = {r["arquivo"]: r for r in rel["registros"]}
     a = regs["WhatsApp Image 2026-10-22 at 15.05.37.jpeg"]       # carimbo decimal
@@ -163,8 +187,12 @@ def test_fluxo_admin_envio_zip(app):
     assert abs(a["lat"] + 25.47282) < 1e-4 and abs(a["lon"] + 49.89629) < 1e-4
     b = regs["WhatsApp Image 2026-10-22 at 16.33.36.jpeg"]       # app da concessionária: estaca 182+691
     assert b["d"]["bloco"] == "2" and abs(b["d"]["est"] - 182691) < 60
-    sem = regs["WhatsApp Image 2026-10-22 at 16.24.37.jpeg"]     # GPS indisponível -> ocorrência, sem inventar
-    assert sem["lat"] is None and sem["data"] is not None
+    assert rc["confirmadas"] == 3 and rc["pendentes"] == 1
+    assert a["empresa"] == "Empresa Teste Ltda"
+    # GPS indisponível -> ocorrência e pendente de revisão (fora do mapa), sem inventar posição
+    assert "WhatsApp Image 2026-10-22 at 16.24.37.jpeg" not in regs
+    sem = fila["pendente"][0] | {"id": fila["pendente"][0]["foto_id"]}
+    assert sem["lat_foto"] is None and sem["data"] is not None
     oc = c.get("/api/admin/ocorrencias").get_json()["ocorrencias"]
     assert any(o["tipo"] == "sem_coordenada" and o["foto_id"] == sem["id"] for o in oc)
     assert any(o["tipo"] == "arquivo_ignorado" and o["membro"] == "pasta/video.mov" for o in oc)
@@ -177,7 +205,7 @@ def test_fluxo_admin_envio_zip(app):
     r2 = enviar(c, zip_bytes([("x/" + FOTOS[0].name, FOTOS[0].read_bytes()), ("y/copia.jpg", FOTOS[0].read_bytes())]), "repetido.zip")
     env2, _ = esperar(c, r2.get_json()["envio_id"])
     assert env2["novas"] == 0 and env2["repetidas"] == 2
-    assert len(c.get("/api/relatorio").get_json()["registros"]) == len(FOTOS)
+    assert len(c.get("/api/relatorio").get_json()["registros"]) == len(FOTOS) - 1   # a sem coordenada segue pendente
 
 
 # ------------------------------------------------------------------ 4. ZIPs inválidos ou maliciosos
@@ -429,10 +457,15 @@ def test_admin_inicial_por_variavel_de_ambiente(tmp_path, monkeypatch):
 
 def test_backup_e_restauracao_sem_perda(app, tmp_path, monkeypatch):
     c = entrar(app, "adm@teste.com", SENHA_ADM)
+    kmz = (AMOSTRAS / "B2B3_KMZ_Estaca.kmz").read_bytes()
+    c.post("/api/admin/eixo", data={"arquivo": (io.BytesIO(kmz), "B2B3_KMZ_Estaca.kmz")},
+           headers={"X-CSRF-Token": c.csrf}, content_type="multipart/form-data")
     r = enviar(c, zip_bytes([(p.name, p.read_bytes()) for p in FOTOS]), "05-11 - lote.zip")
     env, _ = esperar(c, r.get_json()["envio_id"])
     assert env["estado"] == "concluido"
+    c.post(f"/api/admin/envios/{env['id']}/confirmar", headers={"X-CSRF-Token": c.csrf})
     antes = c.get("/api/relatorio").get_json()
+    assert antes["registros"]
     # restauração recusada quando já há dados
     assert c.get("/api/admin/restaurar").get_json() == {"permitido": False}
     r = c.get("/api/admin/backup")
@@ -591,3 +624,116 @@ def test_decisao_incorporar_remover_excluir_restaurar(app):
     assert [x["acao"] for x in h] == ["decisao_desfazer", "decisao_incorporar"]
     assert h[1]["detalhe"]["depois"]["est"] == 100500
     con.close()
+
+
+# ------------------------------------------------------------------ classificação pelo carimbo e fila de revisão
+from mapa import classificacao  # noqa: E402
+
+EIXO2 = {"2": {"rodovia": "BR-277", "pts": [[-25.0, -50.0 + i * 0.0002, 100000 + i * 20] for i in range(500)]}}
+PARAMS = {"limite_anomalia_m": "150"}
+
+
+def _cls(**r):
+    base = {"id": "x", "lat": None, "lon": None, "rodovia": None, "extras": {}}
+    base.update(r)
+    return classificacao.classificar(base, EIXO2, PARAMS)
+
+
+def test_classificacao_prioriza_carimbo_e_aponta_divergencias():
+    ok = _cls(lat=-25.0, lon=-49.99, rodovia="BR-277", extras={"lote_carimbo": "2", "est_carimbo": 101000})
+    assert ok["estado"] == "auto" and ok["final"]["lote"] == "2" and ok["final"]["est"] == 101000
+    # só estaca e lote no carimbo, sem coordenada: posição vem do eixo na estaca
+    so_est = _cls(rodovia="BR-277", extras={"lote_carimbo": "02", "est_carimbo": 101000})
+    assert so_est["estado"] == "auto" and abs(so_est["final"]["lat"] + 25.0) < 1e-9
+    # estaca do carimbo longe da que a coordenada indica: pendente, nada trocado
+    div = _cls(lat=-25.0, lon=-49.99, rodovia="BR-277", extras={"lote_carimbo": "2", "est_carimbo": 103000})
+    assert "103+000, mas a coordenada aponta 101+000 (2.000 m de diferença)" in div["divergencias"][0]["msg"]
+    assert div["estado"] == "pendente" and div["final"] is None and any(d["campo"] == "estaca" for d in div["divergencias"])
+    assert div["sugestao"]["est"] == 103000 and div["sugestao"]["fonte"] == "estaca do carimbo"
+    # segmento fora dos elegíveis
+    fora = _cls(rodovia="BR-376", extras={"lote_carimbo": "5", "est_carimbo": 100500})
+    assert fora["estado"] == "pendente" and any(d["campo"] == "segmento" for d in fora["divergencias"])
+    # lote 4 elegível, mas eixo não carregado: não valida, fica pendente
+    l4 = _cls(rodovia="BR-373", extras={"lote_carimbo": "4", "est_carimbo": 203100})
+    assert l4["estado"] == "pendente" and any(d["campo"] == "eixo" for d in l4["divergencias"])
+    # coordenada longe do eixo
+    longe = _cls(lat=-25.05, lon=-49.95)
+    assert longe["estado"] == "pendente" and any(d["campo"] == "coordenada" for d in longe["divergencias"])
+    assert longe["sugestao"] is None                     # coordenada longe do eixo não vira sugestão
+    outro = _cls(lat=-25.0, lon=-49.99, rodovia="BR-373", extras={"lote_carimbo": "4", "est_carimbo": 203100})
+    assert outro["estado"] == "pendente" and outro["sugestao"] is None   # carimbo diz lote 4: não sugere o lote 2
+    # sem dados
+    nada = _cls()
+    assert nada["estado"] == "pendente" and nada["sugestao"] is None
+    # texto do carimbo novo, relido do OCR guardado (fotos antigas)
+    txt = "Data e hora: 31/10/2026 11:02 | Latitude: -25.000000 | Longitude: -49.990000 | Rodovia: BR-277/PR · Lote 02 | Localização: 101+000 — Decrescente | Faixa 1 | Nota: Tapa buraco"
+    antiga = _cls(lat=-25.0, lon=-49.99, rodovia="BR-277", extras={"texto_ocr": txt})
+    assert antiga["carimbo"]["lote"] == "2" and antiga["carimbo"]["est"] == 101000 and antiga["carimbo"]["nota"] == "Tapa buraco"
+    assert antiga["estado"] == "auto"
+
+
+def test_revisao_importacao_empresa_e_permissoes(app):
+    _semear(app)
+    con = conectar(app.config["MAPA"].DB_PATH)
+    # foto já no mapa cujo carimbo diz outra estaca: sinalizada, mas continua no mapa
+    con.execute("UPDATE fotos SET extras=? WHERE id=?",
+                (json.dumps({"texto_ocr": "Rodovia: BR-277/PR · Lote 02 | Localização: 105+000 — Crescente"}), f"{1:016x}"))
+    from mapa import processamento as P
+    assert P.revisar_fotos_existentes(con) == 1
+    con.close()
+    visao.invalidar()
+    adm = entrar(app, "adm@teste.com", SENHA_ADM)
+    vis = entrar(app, "vis@teste.com", SENHA_VIS)
+    rel = adm.get("/api/relatorio").get_json()
+    r1 = next(r for r in rel["registros"] if r["id"] == f"{1:016x}")
+    assert r1["divergencias"] and rel["revisao"] == {"divergente": 1}
+    assert any(r["id"] == f"{1:016x}" for r in vis.get("/api/relatorio").get_json()["registros"])   # não some do mapa
+    dv = adm.get("/api/admin/revisao?estado=divergente").get_json()["itens"][0]
+    assert dv["carimbo"]["est"] == 105000 and dv["sistema"]["lote"] == "2"
+
+    # só o administrador vê e decide (o servidor recusa o visualizador)
+    assert vis.get("/api/admin/revisao").status_code == 403
+    assert vis.post(f"/api/admin/revisao/{1:016x}", json={"acao": "manter_sistema"}, headers={"X-CSRF-Token": vis.csrf}).status_code == 403
+    assert vis.post("/api/admin/envios/1/confirmar", headers={"X-CSRF-Token": vis.csrf}).status_code == 403
+    assert vis.post("/api/admin/envios", data={"arquivo": (io.BytesIO(b"x"), "a.zip"), "empresa": "X"},
+                    headers={"X-CSRF-Token": vis.csrf}, content_type="multipart/form-data").status_code == 403
+
+    # manter como está: encerra a divergência sem mexer na foto
+    h = {"X-CSRF-Token": adm.csrf}
+    assert adm.post(f"/api/admin/revisao/{1:016x}", json={"acao": "manter_sistema"}, headers=h).status_code == 200
+    rel = adm.get("/api/relatorio").get_json()
+    assert rel["revisao"] == {} and not next(r for r in rel["registros"] if r["id"] == f"{1:016x}").get("divergencias")
+
+    # foto pendente (simula importação): fora do mapa; correção com segmento inválido é recusada; estaca válida inclui
+    con = conectar(app.config["MAPA"].DB_PATH)
+    con.execute("INSERT INTO revisao_foto(foto_id, estado, criado_em) VALUES(?, 'pendente', ?)", (f"{6:016x}", agora()))
+    con.execute("UPDATE parametros SET valor=CAST(valor AS INTEGER)+1 WHERE chave='versao_dados'")
+    con.close()
+    visao.invalidar()
+    assert not any(r["id"] == f"{6:016x}" for r in adm.get("/api/relatorio").get_json()["registros"])
+    assert adm.get(f"/api/fotos/{6:016x}/miniatura").status_code == 200      # o administrador vê a foto pendente
+    assert vis.get(f"/api/fotos/{6:016x}/miniatura").status_code == 404
+    url = f"/api/admin/revisao/{6:016x}"
+    assert adm.post(url, json={"acao": "confirmar"}, headers=h).status_code == 400                       # sem classificação
+    assert adm.post(url, json={"acao": "corrigir", "rodovia": "BR-376", "lote": "5", "est": 100100}, headers=h).status_code == 400
+    assert adm.post(url, json={"acao": "corrigir", "rodovia": "BR-373", "lote": "4", "est": 100100}, headers=h).status_code == 400
+    assert adm.post(url, json={"acao": "corrigir", "rodovia": "BR-277", "lote": "2", "est": 999999}, headers=h).status_code == 400
+    assert adm.post(url, json={"acao": "corrigir", "rodovia": "BR-277", "lote": "2", "lat": -25.3, "lon": -49.9}, headers=h).status_code == 400
+    r = adm.post(url, json={"acao": "corrigir", "rodovia": "BR-277", "lote": "2", "est": 104000}, headers=h)
+    assert r.status_code == 200 and r.get_json()["estado"] == "confirmada"
+    reg = next(r for r in adm.get("/api/relatorio").get_json()["registros"] if r["id"] == f"{6:016x}")
+    assert reg["d"]["est"] == 104000 and reg["d"]["bloco"] == "2" and reg["coord_original"] == [None, None]
+
+    # empresa: obrigatória no envio, editável pelo administrador, aparece no relatório e no CSV
+    assert enviar(adm, b"PK", "x.zip", empresa="").status_code == 400
+    con = conectar(app.config["MAPA"].DB_PATH)
+    con.execute("INSERT INTO envios(id, sha256, nome_original, arquivo, tamanho, lote, estado, criado_em) VALUES(1,'s','a.zip','a.zip',1,'L1','concluido',?)",
+                (agora(),))
+    con.execute("UPDATE fotos SET envio_id=1")
+    con.close()
+    assert adm.post("/api/admin/envios/1/empresa", json={"empresa": "Neovia Conservação"}, headers=h).status_code == 200
+    reg = next(r for r in vis.get("/api/relatorio").get_json()["registros"] if r["id"] == f"{1:016x}")
+    assert reg["empresa"] == "Neovia Conservação"
+    assert "Neovia Conservação" in adm.get("/api/exportar.csv").get_data(as_text=True)
+    h2 = adm.get(f"/api/admin/fotos/{6:016x}/historico").get_json()["historico"]
+    assert h2[0]["acao"] == "revisao_corrigir"
