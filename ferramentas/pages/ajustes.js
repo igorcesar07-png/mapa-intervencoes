@@ -90,7 +90,8 @@
   function reagrupar(j){
     const nc = !!+((j.parametros || {}).nao_classificadas_contam ?? 1), agrupa = +((j.parametros || {}).agrupa_m ?? 25);
     for (const r of j.registros){ const d = r.d || (r.d = {}); delete d.grupo; delete d.rep; }
-    const validas = j.registros.filter(r => r.lat != null && !r.d.dup && r.classe !== "outro" && !r.d.anomalia && !r.d.removida);
+    // mesma regra de mapa/regras.py: a foto incorporada pelo administrador entra mesmo classificada como "outro"
+    const validas = j.registros.filter(r => r.lat != null && !r.d.dup && (r.classe !== "outro" || r.d.incorporada) && !r.d.anomalia && !r.d.removida);
     const ord = validas.map((r, i) => [r, i]).sort((a, b) => { const x = a[0].data || "", y = b[0].data || ""; return x < y ? -1 : x > y ? 1 : a[1] - b[1]; }).map(x => x[0]);
     const grupos = [];
     for (const r of ord){
@@ -100,8 +101,8 @@
       else grupos.push({dia, lat:r.lat, lon:r.lon, fotos:[r]});
     }
     j.grupos = grupos.map(g => {
-      const tapado = g.fotos.some(f => f.classe === "depois" || (f.classe == null && nc));
-      const rep = g.fotos.find(f => f.classe === "depois") || g.fotos[0], gid = "g" + rep.id;
+      const tapado = g.fotos.some(f => f.classe === "depois" || f.d.incorporada || (f.classe == null && nc));
+      const rep = g.fotos.find(f => f.classe === "depois") || g.fotos.find(f => f.d.incorporada) || g.fotos[0], gid = "g" + rep.id;
       for (const f of g.fotos){ f.d.grupo = gid; f.d.rep = f === rep; }
       return {id:gid, lat:g.lat, lon:g.lon, dia:g.dia, tapado, rep:rep.id, fotos:g.fotos.map(f => f.id)};
     });
@@ -118,6 +119,10 @@
       if (a.est != null){
         if (r.coord_original === undefined) r.coord_original = [r.lat ?? null, r.lon ?? null];
         d.est = a.est; d.bloco = a.bloco; r.lat = a.lat; r.lon = a.lon; d.dist = 0; d.anomalia = false; d.motivo = null; d.travado = false; d.incorporada = true; r.decisao = "incorporar"; mudou = true;
+        // tratada: sai das listas pendentes e passa a figurar em "Fotos fora do mapa → Tratadas"
+        const hi = (a.hist || []).filter(x => x.acao === "incorporar").at(-1);
+        d.tratada = "incorporada";
+        r.tratada = {como:"incorporada", fonte:"estaca informada pelo administrador", quando:hi ? hi.quando : null, bloco:a.bloco, est:a.est};
       }
       if (a.decisao === "remover"){ d.removida = true; d.anomalia = false; d.motivo = null; d.travado = false; r.decisao = "remover"; mudou = true; }
       if (a.classe !== undefined){ r.classe = a.classe; mudou = true; }
@@ -218,7 +223,12 @@
     if (c.acao === "remover") mud = {...LIMPA, decisao:"remover"};
     else if (c.acao === "incorporar"){
       const p = estParaPonto(c.bloco, c.est);
-      if (!p) throw new Error(`A estaca ${fmtEst(c.est)} não está no eixo do Bloco ${c.bloco}.`);
+      if (!p){
+        const pts = ((S.tracado.blocos[c.bloco] || {}).pts || []).filter(x => x[2] != null).map(x => x[2]);
+        throw new Error(pts.length
+          ? `A estaca ${fmtEst(c.est)} está fora do Bloco ${c.bloco}, que vai de ${fmtEst(Math.min(...pts))} a ${fmtEst(Math.max(...pts))}. Confira a estaca no carimbo ou escolha o lote certo.`
+          : `O eixo do Bloco ${c.bloco} está sem estacas: carregue o KMZ com as estacas antes de informar a estaca.`);
+      }
       mud = {...LIMPA, decisao:"incorporar", est:c.est, bloco:c.bloco, lat:+p[0].toFixed(7), lon:+p[1].toFixed(7)};
     }
     else if (c.acao === "desfazer") mud = {...LIMPA};
@@ -261,6 +271,7 @@
 
   const SIT = r => {
     const d = S.derivado.get(r.id) || {};
+    if (d.incorporada) return `Incorporada ao mapa na estaca ${fmtEst(d.est)} · Bloco ${d.bloco}`;
     if (r.lat == null) return "Sem coordenada (fora do mapa)";
     if (r._dup) return "Repetida (duplicata) — fora do mapa";
     if (r.classe === "outro") return "Não relacionada — fora do mapa";

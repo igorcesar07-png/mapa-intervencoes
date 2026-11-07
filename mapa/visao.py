@@ -11,6 +11,10 @@ from .db import parametros
 _cache = {"versao": None, "calc": None, "fotos": None, "blocos": None}
 _lock = threading.Lock()
 
+# Sufixo gravado em revisao_foto.fonte quando quem informou a posição foi o administrador
+# (ver rotas.api_revisar). É o que separa "o sistema leu" de "o administrador decidiu".
+FONTE_ADMIN = "informada pelo administrador"
+
 CAMPOS_FOTO = ("id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "coord_fonte",
                "km", "rodovia", "local", "sentido", "classe", "motivo_exclusao", "extras", "envio_id")
 # Campos que o visualizador recebe de uma foto válida
@@ -49,6 +53,10 @@ def calculo(con):
                     f["coord_original"] = [f["lat"], f["lon"]]
                     f["lat"], f["lon"] = rv["lat"], rv["lon"]
                 f["fixa_bloco"], f["fixa_est"] = rv["lote"], rv["est"]
+                if (rv["fonte"] or "").endswith(FONTE_ADMIN):
+                    # o administrador corrigiu rodovia/lote/estaca (ou a coordenada) e confirmou a inclusão
+                    f["tratada"] = {"como": "revisao", "fonte": rv["fonte"], "quando": rv["quando"],
+                                    "bloco": rv["lote"], "est": rv["est"]}
             if rv and rv["estado"] == "divergente":
                 f["divergencias"] = json.loads(rv["divergencias"] or "[]")
             dec = decisoes.get(f["id"])
@@ -62,6 +70,8 @@ def calculo(con):
                 f["coord_original"] = [f["lat"], f["lon"]]
                 f["lat"], f["lon"] = dec["lat"], dec["lon"]
                 f["decisao"], f["dec_est"], f["dec_bloco"] = "incorporar", dec["est"], dec["bloco"]
+                f["tratada"] = {"como": "incorporada", "fonte": f"estaca {FONTE_ADMIN}", "quando": dec["quando"],
+                                "bloco": dec["bloco"], "est": dec["est"]}
             elif dec and dec["decisao"] == "remover":
                 f["decisao"] = "remover"
             fotos.append(f)
@@ -101,7 +111,7 @@ def relatorio(con, papel):
         for f in fotos.values():
             r = {k: f[k] for k in CAMPOS_FOTO if k != "extras"}
             r.update({k: v for k, v in f["extras"].items() if k != "thumb"})
-            for k in ("decisao", "coord_original", "empresa", "divergencias"):
+            for k in ("decisao", "coord_original", "empresa", "divergencias", "tratada"):
                 if f.get(k) is not None:
                     r[k] = f[k]
             r["d"] = calc["deriv"][f["id"]]
@@ -175,7 +185,8 @@ def exportar_csv(con, papel, filtros):
 
     if papel == "admin":
         grupo_tapado = {gp["id"]: gp["tapado"] for gp in calc["grupos"]}
-        w.writerow(base_cab + ["classe", "situacao", "inconsistencia", "motivo", "duplicata", "buraco", "decisao_admin"])
+        w.writerow(base_cab + ["classe", "situacao", "inconsistencia", "motivo", "duplicata", "buraco", "decisao_admin",
+                               "tratada_pelo_admin"])
         for f in sorted(fotos.values(), key=lambda f: (f["data"] or "9999", f["arquivo"])):
             d = calc["deriv"][f["id"]]
             if not passa_filtro(f, d, filtros):
@@ -184,7 +195,7 @@ def exportar_csv(con, papel, filtros):
                 sit = "sem coordenada"
             elif d["dup"]:
                 sit = "duplicata"
-            elif f["classe"] == "outro":
+            elif f["classe"] == "outro" and not d.get("incorporada"):
                 sit = "não relacionada"
             elif d.get("removida"):
                 sit = "removida do mapa de calor"
@@ -196,9 +207,11 @@ def exportar_csv(con, papel, filtros):
                 sit = "válida"
             else:
                 sit = "foto extra do mesmo buraco"
+            tr = f.get("tratada") or {}
             w.writerow(linha(f, d) + [f["classe"] or "", sit, "sim" if d["anomalia"] else "não", d["motivo"] or "",
                                       "sim" if d["dup"] else "", d.get("grupo") or "",
-                                      "incorporada na estaca" if d.get("incorporada") else "removida do mapa de calor" if d.get("removida") else ""])
+                                      "incorporada na estaca" if d.get("incorporada") else "removida do mapa de calor" if d.get("removida") else "",
+                                      f"{tr['fonte']} em {(tr['quando'] or '').replace('T', ' ')}" if tr else ""])
     else:
         w.writerow(base_cab)
         for gp in calc["grupos"]:

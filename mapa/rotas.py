@@ -457,7 +457,8 @@ def api_revisar(foto_id):
             return jsonify(erro="Estaca inválida."), 400
         p = regras.estaca_para_ponto(blocos, lote, est)
         if not p:
-            return jsonify(erro=f"A estaca {regras.fmt_est(est)} não existe no eixo do lote {lote}."), 400
+            # a foto continua em revisão, com o que precisa ser corrigido
+            return jsonify(erro=_erro_estaca(blocos, lote, est, "lote")), 400
         if lat is None:
             lat, lon = round(p[0], 7), round(p[1], 7)
         novo = {"rodovia": rod, "lote": lote, "est": est, "lat": lat, "lon": lon, "fonte": fonte}
@@ -499,6 +500,18 @@ ACOES_DECISAO = ("remover", "incorporar", "desfazer", "excluir", "restaurar")
 TIPOS_LOCAL = ("sem_coordenada", "coordenada_corrigida", "coord_revisada")
 
 
+def _erro_estaca(blocos, bloco, est, rotulo="Bloco"):
+    """Por que a estaca não pôde ser ligada ao eixo com segurança. Sem isso a foto fica em revisão."""
+    b = blocos.get(str(bloco)) or {}
+    pts = [p for p in b.get("pts") or [] if p[2] is not None]
+    if not pts:
+        return (f"O eixo do {rotulo} {bloco} está carregado sem estacas: carregue o KMZ com as estacas "
+                f"(ferramenta Eixo da rodovia) antes de informar a estaca.")
+    return (f"A estaca {regras.fmt_est(est)} está fora do {rotulo} {bloco}, que vai de "
+            f"{regras.fmt_est(min(p[2] for p in pts))} a {regras.fmt_est(max(p[2] for p in pts))}. "
+            f"Confira a estaca no carimbo ou escolha o lote certo.")
+
+
 def _decisao_atual(foto_id):
     r = g.db.execute("SELECT decisao, est, bloco, lat, lon, excluida, motivo FROM decisoes_foto WHERE foto_id=?", (foto_id,)).fetchone()
     return dict(r) if r else {"decisao": None, "est": None, "bloco": None, "lat": None, "lon": None, "excluida": 0, "motivo": None}
@@ -530,7 +543,7 @@ def api_decisao(foto_id):
             return jsonify(erro="Escolha um bloco com eixo carregado."), 400
         p = regras.estaca_para_ponto(blocos, bloco, est)
         if not p:
-            return jsonify(erro=f"A estaca {regras.fmt_est(est)} não está no eixo do Bloco {bloco}."), 400
+            return jsonify(erro=_erro_estaca(blocos, bloco, est)), 400
         novo.update(decisao="incorporar", est=est, bloco=bloco, lat=round(p[0], 7), lon=round(p[1], 7))
     elif acao == "desfazer":
         novo.update(decisao=None, est=None, bloco=None, lat=None, lon=None)

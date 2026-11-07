@@ -6,8 +6,9 @@
   (coordenada idêntica em fotos com >= 5 min de diferença); sem eixo,
   foto a mais de 5 km de qualquer outra;
 - buraco (grupo): fotos válidas do mesmo dia a <= 25 m do centro do grupo;
-- buraco tapado: o grupo tem foto classificada "depois" (tapado) ou foto
-  sem classificação (regra atual para lotes não classificados).
+- buraco tapado: o grupo tem foto classificada "depois" (tapado), foto
+  sem classificação (regra atual para lotes não classificados) ou foto
+  incorporada numa estaca pelo administrador.
 """
 import math
 
@@ -146,6 +147,9 @@ def calcular(fotos, blocos, params):
         if r.get("fixa_bloco") is not None and r.get("fixa_est") is not None:
             # classificação confirmada pelo administrador na revisão da importação
             d.update(bloco=str(r["fixa_bloco"]), est=float(r["fixa_est"]))
+        if r.get("tratada"):
+            # o administrador já informou a estaca e confirmou: a foto não está mais esperando revisão
+            d["tratada"] = r["tratada"]["como"]
         dec = r.get("decisao")
         if dec == "incorporar":
             # posição escolhida pelo administrador: ponto normal, na estaca e no bloco que ele definiu
@@ -191,9 +195,12 @@ def calcular(fotos, blocos, params):
         d["anomalia"] = bool(motivos)
         d["motivo"] = " · ".join(motivos) or None
 
-    # buracos: fotos válidas do mesmo dia a <= 25 m do centro do grupo
-    validas = [r for r in com if not der[r["id"]]["dup"] and r["classe"] != "outro" and not der[r["id"]]["anomalia"]
-               and not der[r["id"]].get("removida")]
+    # buracos: fotos válidas do mesmo dia a <= 25 m do centro do grupo.
+    # A foto incorporada pelo administrador entra mesmo classificada como "outro": ele escolheu a estaca
+    # e pediu para incluir no mapa de calor, e essa decisão vale mais que a classificação automática.
+    validas = [r for r in com if not der[r["id"]]["dup"]
+               and (r["classe"] != "outro" or der[r["id"]].get("incorporada"))
+               and not der[r["id"]]["anomalia"] and not der[r["id"]].get("removida")]
     grupos = []
     for r in sorted(validas, key=lambda r: r["data"] or ""):
         dia = (r["data"] or "")[:10]
@@ -206,8 +213,10 @@ def calcular(fotos, blocos, params):
             grupos.append({"dia": dia, "lat": r["lat"], "lon": r["lon"], "fotos": [r]})
     saida = []
     for gp in grupos:
-        tapado = any(f["classe"] == "depois" or (f["classe"] is None and nc_contam) for f in gp["fotos"])
-        rep = next((f for f in gp["fotos"] if f["classe"] == "depois"), gp["fotos"][0])
+        tapado = any(f["classe"] == "depois" or der[f["id"]].get("incorporada") or (f["classe"] is None and nc_contam)
+                     for f in gp["fotos"])
+        rep = next((f for f in gp["fotos"] if f["classe"] == "depois"),
+                   next((f for f in gp["fotos"] if der[f["id"]].get("incorporada")), gp["fotos"][0]))
         gid = "g" + rep["id"]
         for f in gp["fotos"]:
             der[f["id"]]["grupo"] = gid

@@ -231,7 +231,12 @@ function passa(r, f){
   if (f.dia && d !== f.dia) return false;
   return true;
 }
-function filtrados(){ const f = filtros(); return S.todos.filter(r => !r._dup && r.classe !== "outro" && passa(r, f)); }
+/* "tratada": o administrador informou a estaca e confirmou a inclusão (incorporada no mapa ou corrigida
+   na fila de revisão). Deixa de ser item pendente e passa a valer pelas mesmas regras das demais fotos. */
+const tratada = r => (S.derivado.get(r.id) || {}).tratada || null;
+/* Não relacionada ao tapa-buraco continua fora do mapa, a menos que o administrador a tenha incorporado. */
+const foraPorClasse = r => r.classe === "outro" && !(S.derivado.get(r.id) || {}).incorporada;
+function filtrados(){ const f = filtros(); return S.todos.filter(r => !r._dup && !foraPorClasse(r) && passa(r, f)); }
 
 /* ---------- filtro de vários blocos (caixas de seleção). Conjunto vazio = Todos. */
 const nomeBloco = id => `Bloco ${id}${S.tracado.blocos[id] && S.tracado.blocos[id].rodovia ? " · " + S.tracado.blocos[id].rodovia : ""}`;
@@ -261,7 +266,7 @@ function montarBlocos(){
 })();
 
 function montarFiltros(){
-  const reg = S.todos.filter(r => !r._dup && r.classe !== "outro");
+  const reg = S.todos.filter(r => !r._dup && !foraPorClasse(r));
   const diasValidos = [...new Set(reg.map(diaDe).filter(Boolean))].sort();   // cada data uma vez só
   const meses = [...new Set(diasValidos.map(d => d.slice(0,7)))].sort();
   const lotes = [...new Set(reg.map(r => r.lote).filter(Boolean))].sort();
@@ -334,17 +339,20 @@ function desenhar(){
         <div><b>${esc(der(r.id).motivo)}</b><span>${fmtData(r.data)} · ${esc(r.arquivo)}</span>${r.coord_revisada?'<br><span>coordenada corrigida na releitura do OCR</span>':''}${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}${botaoDecidir(r.id, "Resolver")}</div></div>`).join("")
       : `<p class="hint" style="margin:0">Nenhuma inconsistência no filtro atual.</p>`;
     $("#anomList").querySelectorAll(".item").forEach(el => el.onclick = () => focar(el.dataset.id));
-    const fig = (r, cap) => `<figure><img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="" loading="lazy"><figcaption class="mot">${cap}</figcaption>${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}${botaoDecidir(r.id, "Resolver")}</figure>`;
+    const fig = (r, cap, rot) => `<figure><img src="${mini(r.id)}" data-full="${grande(r.id)}" alt="" loading="lazy"><figcaption class="mot">${cap}</figcaption>${window.botaoAjuste ? window.botaoAjuste(r.id) : ""}${botaoDecidir(r.id, rot || "Resolver")}</figure>`;
     const f = filtros();
-    const sem = regs.filter(r => r.lat == null);
-    const outros = S.todos.filter(r => r.classe === "outro" && !r._dup && (!f.lote || r.lote === f.lote));
+    // as tratadas saem das listas pendentes: o administrador já informou a estaca e confirmou a inclusão
+    const sem = regs.filter(r => r.lat == null && !tratada(r));
+    const outros = S.todos.filter(r => foraPorClasse(r) && !r._dup && !tratada(r) && (!f.lote || r.lote === f.lote));
     const fotosAntes = soAntes.flatMap(g => g.fotos.map(id => S.porId.get(id)).filter(Boolean));
+    const selo = r => tratada(r) ? ' <span class="selo-trat">tratada</span>' : "";
     $("#semSum").innerHTML = `Sem coordenada: <b>${sem.length}</b> foto(s)`;
     $("#outSum").innerHTML = `Não relacionadas ao tapa-buraco: <b>${outros.length}</b> foto(s)`;
     $("#antSum").innerHTML = `Buraco sem foto de tapado: <b>${soAntes.length}</b> buraco(s), ${fotosAntes.length} foto(s)`;
     $("#semGrid").innerHTML = sem.map(r => fig(r, `${fmtData(r.data)}${r.classe ? " · " + esc(r.classe) : ""}`)).join("");
     $("#outGrid").innerHTML = outros.map(r => fig(r, esc(r.motivo_exclusao || "não relacionada"))).join("");
-    $("#antGrid").innerHTML = fotosAntes.map(r => fig(r, fmtData(r.data))).join("");
+    // uma foto tratada ainda pode cair aqui: o buraco dela segue sem foto do serviço feito
+    $("#antGrid").innerHTML = fotosAntes.map(r => fig(r, fmtData(r.data) + selo(r))).join("");
     const removidas = S.todos.filter(r => der(r.id).removida && passa(r, f));
     if ($("#remGrid")){
     $("#remSum").innerHTML = `Removidas do mapa de calor: <b>${removidas.length}</b> foto(s)`;
@@ -354,12 +362,20 @@ function desenhar(){
     $("#excGrid").innerHTML = exc.map(e => `<figure><img src="${mini(e.id)}" data-full="${grande(e.id)}" alt="" loading="lazy"><figcaption class="mot">${fmtData(e.data)}${e.motivo ? " · " + esc(e.motivo) : ""}</figcaption>${botaoDecidir(e.id, "Restaurar")}</figure>`).join("")
       || '<p class="hint" style="margin:4px 0">Nenhuma foto excluída.</p>';
     }
-    $("#semInfo").textContent = `${sem.length + outros.length + fotosAntes.length + removidas.length} foto(s)`;
+    // tratadas: estavam fora do mapa e o administrador posicionou numa estaca e confirmou
+    const trat = S.todos.filter(r => tratada(r) && passa(r, f));
+    if ($("#trtGrid")){
+      $("#trtSum").innerHTML = `Tratadas (incluídas no mapa): <b>${trat.length}</b> foto(s)`;
+      $("#trtGrid").innerHTML = trat.map(r => fig(r, legendaTratada(r), "Gerenciar")).join("")
+        || '<p class="hint" style="margin:4px 0">Nenhuma foto tratada ainda. Use “Resolver” numa foto das listas acima para informar a estaca e incluí-la no mapa.</p>';
+    }
+    const pendentes = sem.length + outros.length + fotosAntes.filter(r => !tratada(r)).length + removidas.length;
+    $("#semInfo").textContent = `${pendentes} pendente(s)` + (trat.length ? ` · ${trat.length} tratada(s)` : "");
   }
   graficoKm(tapados.map(g => S.porId.get(g.rep)));
   graficoDia(tapados.map(g => S.porId.get(g.rep)));
   $("#sub").textContent = S.todos.length
-    ? (ADMIN ? `${S.todos.filter(r => !r._dup && r.classe !== "outro").length} fotos · ${periodo(S.todos)}` : `${S.grupos.length} buracos tapados · ${periodo(S.todos)}`)
+    ? (ADMIN ? `${S.todos.filter(r => !r._dup && !foraPorClasse(r)).length} fotos · ${periodo(S.todos)}` : `${S.grupos.length} buracos tapados · ${periodo(S.todos)}`)
     : "Nenhum dado ainda.";
 }
 
@@ -600,6 +616,15 @@ document.addEventListener("click", e => {
   e.preventDefault(); e.stopPropagation(); abrirDecisao(b.dataset.dec);
 }, true);
 
+/* Legenda da foto tratada: onde ela foi posta, se já conta no calor e quem/quando decidiu. */
+function legendaTratada(r){
+  const t = r.tratada || {}, d = S.derivado.get(r.id) || {};
+  const onde = t.est != null ? `${fmtEst(t.est)} · Bloco ${esc(String(t.bloco ?? "—"))}` : "sem estaca";
+  const g = S.grupos.find(x => x.id === d.grupo);
+  const sit = d.removida ? "removida do calor" : g && g.tapado ? "no mapa de calor"
+    : g ? "buraco ainda sem foto de tapado" : "fora do mapa";
+  return `${esc(onde)} · ${esc(sit)}<br>${esc(t.fonte || "")}${t.quando ? " · " + fmtData(t.quando) : ""}`;
+}
 function situacaoFoto(r, d){
   if (d.incorporada) return {txt:`Incorporada ao mapa na estaca ${fmtEst(d.est)} · Bloco ${d.bloco}`, cls:"info"};
   if (d.removida) return {txt:"Removida do mapa de calor (foto e registro guardados)", cls:"warn"};
@@ -646,7 +671,9 @@ function abrirDecisao(id, aviso){
     const grupo = S.grupos.find(x => x.id === d.grupo);
     const efeitoExc = grupo && grupo.tapado && grupo.fotos.length === 1 ? "O buraco desta foto deixa de contar no mapa de calor, nos gráficos e nos totais."
       : grupo && grupo.tapado ? `O buraco continua no mapa com as outras ${grupo.fotos.length - 1} foto(s).` : "Ela não conta hoje no mapa de calor.";
-    el.innerHTML = cab(sit.txt, sit.cls) + `
+    const jaTratada = r.tratada ? `<p class="dec-trat">Já tratada: ${esc(r.tratada.fonte || "")}${r.tratada.quando ? " em " + fmtData(r.tratada.quando) : ""}.
+      Ela saiu das listas pendentes e fica em <b>Fotos fora do mapa → Tratadas</b>.</p>` : "";
+    el.innerHTML = cab(sit.txt, sit.cls) + jaTratada + `
       <div class="dec-bloco"><b>Remover do mapa de calor</b>
         <p class="hint">Sai do mapa, do calor, dos gráficos e dos relatórios. A foto e o registro <b>continuam guardados</b> e dá para desfazer.</p>
         <button type="button" class="btn" id="decRemover" ${d.removida ? "disabled" : ""}>${d.removida ? "Já removida do mapa de calor" : "Remover do mapa de calor"}</button></div>

@@ -160,6 +160,10 @@ details[open] summary{margin-bottom:8px}
 .dec-perigo .chk{margin:8px 0}
 .btn.perigo{color:var(--bad);border-color:var(--bad)}
 .btn.perigo:not(:disabled):hover{background:var(--bad);color:#fff}
+/* foto já tratada: o administrador informou a estaca e confirmou a inclusão no mapa */
+.selo-trat{display:inline-block;padding:0 5px;border-radius:99px;background:var(--ok);color:#fff;font:600 9.5px var(--sans);vertical-align:1px}
+.dec-trat{margin:0;font-size:12.5px;line-height:1.4;background:var(--panel-2);border-left:3px solid var(--ok);border-radius:0 7px 7px 0;padding:7px 9px}
+#trtSum{color:var(--ok)}
 .dec-msg{margin:0;font-size:12.5px;min-height:1.2em}
 .dec-msg.ok{color:var(--ok)} .dec-msg.erro{color:var(--bad)}
 .dec-hist summary{cursor:pointer;font-size:12px;color:var(--ink-2)}

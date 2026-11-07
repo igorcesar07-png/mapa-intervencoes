@@ -737,3 +737,102 @@ def test_revisao_importacao_empresa_e_permissoes(app):
     assert "Neovia Conservação" in adm.get("/api/exportar.csv").get_data(as_text=True)
     h2 = adm.get(f"/api/admin/fotos/{6:016x}/historico").get_json()["historico"]
     assert h2[0]["acao"] == "revisao_corrigir"
+
+
+# ------------------------------------------------------------------ foto tratada: sai das pendências e entra no mapa
+def _reg(c, foto_id):
+    return next((x for x in c.get("/api/relatorio").get_json()["registros"] if x["id"] == foto_id), None)
+
+
+def test_foto_tratada_sai_das_pendencias_e_entra_no_calor(app):
+    """O administrador informa a estaca e confirma: a foto deixa de ser pendência, vira ponto do mapa
+    de calor e passa a ser consultável como 'tratada', sem se confundir com remover nem com excluir."""
+    _semear(app)
+    adm = entrar(app, "adm@teste.com", SENHA_ADM)
+    vis = entrar(app, "vis@teste.com", SENHA_VIS)
+    outro, antes, sem = f"{4:016x}", f"{3:016x}", f"{6:016x}"
+    rel = adm.get("/api/relatorio").get_json()
+    n_tapados = sum(1 for gp in rel["grupos"] if gp["tapado"])
+    assert _reg(adm, outro)["classe"] == "outro" and not _reg(adm, outro)["d"].get("grupo")
+    assert not _reg(adm, outro).get("tratada")
+
+    # estaca que não pode ser ligada ao eixo: recusada, com o que corrigir, e a foto continua fora do mapa
+    r = _decidir(adm, outro, acao="incorporar", bloco="2", est=999999)
+    assert r.status_code == 400 and "fora do Bloco 2" in r.get_json()["erro"] and "100+000" in r.get_json()["erro"]
+    con = conectar(app.config["MAPA"].DB_PATH)
+    con.execute("INSERT INTO eixo_blocos(bloco, rodovia, fonte, pts, atualizado_em) VALUES('3','BR-277','teste',?,?)",
+                (json.dumps([[-26.0, -50.0 + i * 0.0002, None] for i in range(10)]), agora()))
+    con.execute("UPDATE parametros SET valor=CAST(valor AS INTEGER)+1 WHERE chave='versao_dados'")
+    con.close()
+    visao.invalidar()
+    r = _decidir(adm, outro, acao="incorporar", bloco="3", est=102000)
+    assert r.status_code == 400 and "sem estacas" in r.get_json()["erro"]
+    assert not _reg(adm, outro).get("tratada") and not _reg(adm, outro)["d"].get("grupo")
+
+    # incorporar uma foto "não relacionada": a decisão do administrador vale e ela entra no calor
+    assert _decidir(adm, outro, acao="incorporar", bloco="2", est=102000).status_code == 200
+    rel = adm.get("/api/relatorio").get_json()
+    reg = next(x for x in rel["registros"] if x["id"] == outro)
+    assert reg["tratada"]["como"] == "incorporada" and reg["tratada"]["est"] == 102000 and reg["tratada"]["bloco"] == "2"
+    assert reg["tratada"]["quando"] and "administrador" in reg["tratada"]["fonte"]
+    assert reg["d"]["tratada"] == "incorporada" and reg["d"]["incorporada"]
+    gp = next(g for g in rel["grupos"] if g["id"] == reg["d"]["grupo"])
+    assert gp["tapado"] and sum(1 for g in rel["grupos"] if g["tapado"]) == n_tapados + 1
+    assert any(x["id"] == outro for x in vis.get("/api/relatorio").get_json()["registros"])
+
+    # foto "antes" sem tapado: incorporada, o buraco passa a contar (não fica numa segunda fila pendente)
+    assert _decidir(adm, antes, acao="incorporar", bloco="2", est=103000).status_code == 200
+    rel = adm.get("/api/relatorio").get_json()
+    d3 = next(x for x in rel["registros"] if x["id"] == antes)["d"]
+    assert next(g for g in rel["grupos"] if g["id"] == d3["grupo"])["tapado"]
+
+    # CSV: situação deixa de ser "não relacionada" e a marca de tratada aparece
+    csv = adm.get("/api/exportar.csv").get_data(as_text=True)
+    linha = next(l for l in csv.splitlines() if l.startswith("NAO_RELACIONADA_CHUVA.jpg"))
+    assert "não relacionada" not in linha and "estaca informada pelo administrador" in linha
+
+    # desfazer: perde a marca de tratada e volta às regras automáticas
+    assert _decidir(adm, outro, acao="desfazer").status_code == 200
+    reg = _reg(adm, outro)
+    assert not reg.get("tratada") and not reg["d"].get("tratada") and not reg["d"].get("grupo")
+
+    # tratada não se confunde com removida do calor nem com excluída
+    assert _decidir(adm, antes, acao="remover").status_code == 200
+    reg = _reg(adm, antes)
+    assert reg["d"]["removida"] and not reg["d"].get("tratada") and not reg.get("tratada")
+    assert _decidir(adm, sem, acao="excluir", confirmar=True).status_code == 200
+    rel = adm.get("/api/relatorio").get_json()
+    assert not any(x["id"] == sem for x in rel["registros"]) and rel["excluidas"][0]["id"] == sem
+
+
+def test_tratada_so_quando_o_administrador_informa_a_posicao(app):
+    """Confirmar a leitura automática não marca 'tratada'; corrigir a posição na revisão marca."""
+    _semear(app)
+    adm = entrar(app, "adm@teste.com", SENHA_ADM)
+    h = {"X-CSRF-Token": adm.csrf}
+    auto, corrigida = f"{10:016x}", f"{6:016x}"
+    con = conectar(app.config["MAPA"].DB_PATH)
+    con.execute("INSERT INTO revisao_foto(foto_id, estado, rodovia, lote, est, lat, lon, fonte, criado_em) "
+                "VALUES(?, 'aguardando', 'BR-277', '2', 108000, -25.0, -49.92, 'estaca do carimbo', ?)", (auto, agora()))
+    con.execute("INSERT INTO revisao_foto(foto_id, estado, criado_em) VALUES(?, 'pendente', ?)", (corrigida, agora()))
+    con.execute("UPDATE parametros SET valor=CAST(valor AS INTEGER)+1 WHERE chave='versao_dados'")
+    con.close()
+    visao.invalidar()
+    assert _reg(adm, auto) is None and _reg(adm, corrigida) is None       # em revisão: fora do mapa
+
+    assert adm.post(f"/api/admin/revisao/{auto}", json={"acao": "confirmar"}, headers=h).status_code == 200
+    assert not _reg(adm, auto).get("tratada")                            # leitura automática apenas confirmada
+
+    # estaca inexistente no eixo: recusada com o que corrigir, e a foto continua em revisão
+    url = f"/api/admin/revisao/{corrigida}"
+    r = adm.post(url, json={"acao": "corrigir", "rodovia": "BR-277", "lote": "2", "est": 999999}, headers=h)
+    assert r.status_code == 400 and "fora do lote 2" in r.get_json()["erro"]
+    assert _reg(adm, corrigida) is None
+    con = conectar(app.config["MAPA"].DB_PATH)
+    assert con.execute("SELECT estado FROM revisao_foto WHERE foto_id=?", (corrigida,)).fetchone()[0] == "pendente"
+    con.close()
+
+    assert adm.post(url, json={"acao": "corrigir", "rodovia": "BR-277", "lote": "2", "est": 104000}, headers=h).status_code == 200
+    reg = _reg(adm, corrigida)
+    assert reg["tratada"]["como"] == "revisao" and reg["tratada"]["est"] == 104000 and reg["d"]["tratada"] == "revisao"
+    assert "administrador" in reg["tratada"]["fonte"] and reg["tratada"]["quando"]
