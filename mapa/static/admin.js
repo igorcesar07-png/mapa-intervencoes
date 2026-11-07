@@ -29,7 +29,9 @@ $("#fZip").addEventListener("submit", e => {
   const f = $("#zip").files[0], m = $("#upMsg");
   if (!f) return;
   if (!/\.zip$/i.test(f.name)) return msg(m, "Escolha um arquivo .zip.", "erro");
-  const fd = new FormData(); fd.append("arquivo", f);
+  const empresa = $("#zEmpresa").value.trim();
+  if (empresa.length < 2) return msg(m, "Informe a empresa que executou os serviços destas fotos.", "erro");
+  const fd = new FormData(); fd.append("arquivo", f); fd.append("empresa", empresa);
   const x = new XMLHttpRequest();
   x.open("POST", "/api/admin/envios");
   x.setRequestHeader("X-CSRF-Token", CSRF());
@@ -38,7 +40,7 @@ $("#fZip").addEventListener("submit", e => {
   x.onload = () => {
     $("#btnZip").disabled = false; $("#upBarra").hidden = true;
     let j = {}; try { j = JSON.parse(x.responseText); } catch(_){}
-    if (x.status === 202){ msg(m, `ZIP recebido (envio #${j.envio_id}). O processamento começou em segundo plano — acompanhe abaixo.`, "ok"); $("#fZip").reset(); }
+    if (x.status === 202){ msg(m, `ZIP recebido (envio #${j.envio_id}). O processamento começou em segundo plano — acompanhe abaixo; depois confira as fotos em Revisão.`, "ok"); $("#zip").value = ""; }
     else if (x.status === 401) location.href = "/login?proximo=/admin";
     else msg(m, j.erro || `Falha no envio (erro ${x.status}).`, "erro");
     carregarEnvios();
@@ -54,20 +56,30 @@ async function carregarEnvios(){
   try{
     const {envios} = await api("/api/admin/envios");
     ativos = envios.some(e => e.estado === "aguardando" || e.estado === "em_andamento");
+    const emp = [...new Set(envios.map(e => e.empresa).filter(Boolean))];
+    $("#empresasUsadas").innerHTML = emp.map(x => `<option value="${esc(x)}">`).join("");
+    const sel = $("#rvEnvio"), v = sel.value;
+    sel.innerHTML = '<option value="">Todos</option>' + envios.map(e => `<option value="${e.id}">#${e.id} · ${esc(e.lote)}</option>`).join(""); sel.value = v;
     $("#tEnvios").innerHTML = envios.length ? envios.map(e => {
       const pct = e.total ? Math.round(100*e.processadas/e.total) : (e.estado === "concluido" ? 100 : 0);
       const res = e.estado === "concluido" ? `${e.novas} nova(s), ${e.repetidas} repetida(s), ${e.ignoradas} ignorada(s)` : "";
+      const rv = e.revisao || {};
+      const revisao = (rv.aguardando ? `<button type="button" class="btn pri mini" data-confirmar-envio="${e.id}">Confirmar ${rv.aguardando} no mapa</button>` : "")
+        + (rv.pendente ? `<button type="button" class="lnk" data-ver-envio="${e.id}">${rv.pendente} pendente(s)</button>` : "")
+        + (rv.confirmada ? `<small>${rv.confirmada} confirmada(s)</small>` : "");
       return `<tr>
         <td class="num">${e.id}</td>
-        <td>${esc(e.nome_original)}<small>lote: ${esc(e.lote)}${e.origem === "legado" ? " · importado do mapa anterior" : ""}</small></td>
+        <td>${esc(e.nome_original)}<small>lote: ${esc(e.lote)}${e.origem === "legado" ? " · importado do mapa anterior" : ""}</small>
+          <small>empresa: <b>${e.empresa ? esc(e.empresa) : "não informada"}</b> <button type="button" class="lnk" data-empresa-envio="${e.id}" data-atual="${esc(e.empresa || "")}">${e.empresa ? "editar" : "informar"}</button></small></td>
         <td><span class="estado ${e.estado}">${ESTADO[e.estado]}</span></td>
         <td class="num">${e.total ? `${e.processadas}/${e.total}` : "—"}<div class="barra"><i style="width:${pct}%"></i></div></td>
         <td>${esc(e.mensagem || "")}${res && e.mensagem && !e.mensagem.includes("nova") ? `<small>${res}</small>` : ""}</td>
+        <td>${revisao || '<span class="hint">—</span>'}</td>
         <td class="num">${dataBR(e.criado_em)}<small>${esc(e.enviado_por_email || "")}</small></td></tr>`;
-    }).join("") : `<tr><td colspan="6" class="hint">Nenhum envio ainda.</td></tr>`;
-    if (haviaAtivos && !ativos){ carregarOcorrencias(); if (!salvando && !document.querySelector('.cls-estado.pendente')) carregarFotos(); }
+    }).join("") : `<tr><td colspan="7" class="hint">Nenhum envio ainda.</td></tr>`;
+    if (haviaAtivos && !ativos){ carregarRevisao(); carregarOcorrencias(); if (!salvando && !document.querySelector('.cls-estado.pendente')) carregarFotos(); }
     haviaAtivos = ativos;
-  }catch(e){ $("#tEnvios").innerHTML = `<tr><td colspan="6" class="msg erro">${esc(e.message)}</td></tr>`; }
+  }catch(e){ $("#tEnvios").innerHTML = `<tr><td colspan="7" class="msg erro">${esc(e.message)}</td></tr>`; }
   timerEnvios = setTimeout(carregarEnvios, ativos ? 2000 : 10000);
 }
 
@@ -282,3 +294,127 @@ $("#fRest").addEventListener("submit", e => {
 });
 
 carregarRestaurar(); carregarEnvios(); carregarOcorrencias(); carregarFotos(); carregarRegras(); carregarEixo(); carregarUsuarios();
+
+/* ============================================================ envios: empresa e confirmação */
+$("#tEnvios").addEventListener("click", async e => {
+  const b = e.target.closest("[data-empresa-envio],[data-confirmar-envio],[data-ver-envio]");
+  if (!b) return;
+  try{
+    if (b.dataset.empresaEnvio){
+      const nova = prompt("Empresa que executou os serviços deste envio (vale para todas as fotos dele):", b.dataset.atual || "");
+      if (nova === null) return;
+      await api(`/api/admin/envios/${b.dataset.empresaEnvio}/empresa`, {method:"POST", json:{empresa:nova}});
+      msg($("#upMsg"), "Empresa salva para todas as fotos do envio.", "ok");
+    } else if (b.dataset.confirmarEnvio){
+      if (!confirm("Incluir no mapa as fotos deste envio classificadas automaticamente? As pendentes continuam na revisão.")) return;
+      const j = await api(`/api/admin/envios/${b.dataset.confirmarEnvio}/confirmar`, {method:"POST", json:{}});
+      msg($("#upMsg"), `${j.confirmadas} foto(s) incluída(s) no mapa. ${j.pendentes} pendente(s) continuam na revisão.`, "ok");
+      carregarRevisao();
+    } else {
+      $("#rvEnvio").value = b.dataset.verEnvio; rvEstado = "pendente"; rvInicio = 0; marcarAba(); carregarRevisao();
+      location.hash = "#revisao";
+    }
+    carregarEnvios();
+  }catch(err){ msg($("#upMsg"), err.message, "erro"); }
+});
+
+/* ============================================================ revisão da importação */
+let rvEstado = "pendente", rvInicio = 0, rvElegiveis = [], rvBlocos = {};
+const lerEst = t => { const m = String(t || "").trim().match(/^(\d{1,4})\s*\+\s*(\d{1,3})$/); return m ? +m[1]*1000 + +m[2] : null; };
+const nd = v => v == null || v === "" ? '<em class="nd">não identificado</em>' : esc(v);
+function marcarAba(){ document.querySelectorAll("[data-rest]").forEach(b => b.classList.toggle("on", b.dataset.rest === rvEstado)); }
+document.querySelectorAll("[data-rest]").forEach(b => b.onclick = () => { rvEstado = b.dataset.rest; rvInicio = 0; marcarAba(); carregarRevisao(); });
+$("#rvEnvio").onchange = () => { rvInicio = 0; carregarRevisao(); };
+$("#rvAnt").onclick = () => { rvInicio = Math.max(0, rvInicio - 40); carregarRevisao(); };
+$("#rvProx").onclick = () => { rvInicio += 40; carregarRevisao(); };
+$("#rvReanalisar").onclick = async () => {
+  try{ msg($("#rvMsg"), "Comparando…"); const j = await api("/api/admin/revisao/reanalisar", {method:"POST", json:{}});
+    msg($("#rvMsg"), `${j.divergentes} foto(s) do mapa com carimbo divergente. Nada foi alterado.`, "ok"); rvEstado = "divergente"; marcarAba(); carregarRevisao(); }
+  catch(e){ msg($("#rvMsg"), e.message, "erro"); }
+};
+
+function cartaoRevisao(it){
+  const c = it.carimbo || {}, s = it.sistema || {}, sug = it.sugestao;
+  const coordFoto = it.lat_foto != null ? `${it.lat_foto.toFixed(6)}, ${it.lon_foto.toFixed(6)} <small>(${esc(it.coord_fonte || "")})</small>` : null;
+  const final = it.lote ? `${esc(it.rodovia)} · lote ${esc(it.lote)} · ${it.est != null ? fmtEst(it.est) : "—"}` : null;
+  const editavel = it.estado !== "confirmada";
+  // o segmento parte do que está escrito na foto (carimbo); sem isso, o administrador escolhe — nunca um trecho qualquer
+  const segIni = it.lote || c.lote || (sug && sug.lote) || "";
+  const opts = `<option value="" ${rvElegiveis.some(([, l]) => l === segIni) ? "" : "selected"}>— escolha o segmento —</option>`
+    + rvElegiveis.map(([r, l]) => `<option value="${r}|${l}" ${segIni === l ? "selected" : ""}>${r} · lote ${l.padStart(2,"0")}${rvBlocos[l] ? "" : " (eixo não carregado)"}</option>`).join("");
+  return `<article class="rv" data-id="${it.foto_id}" data-estado="${it.estado}">
+    <img src="${mini(it.foto_id)}" data-full="${grande(it.foto_id)}" alt="" loading="lazy">
+    <div class="rv-dados">
+      <h4>${esc(it.arquivo)}</h4>
+      <table>
+        <tr><th></th><th>Carimbo (na foto)</th><th>Sistema (pela coordenada)</th></tr>
+        <tr><td>Rodovia</td><td>${nd(c.rodovia)}</td><td>${nd(s.rodovia)}</td></tr>
+        <tr><td>Lote / bloco</td><td>${nd(c.lote)}</td><td>${nd(s.lote)}</td></tr>
+        <tr><td>Estaca / km</td><td>${c.est != null ? fmtEst(c.est) : nd(null)}</td><td>${s.est != null ? fmtEst(s.est) + (s.dist != null ? ` <small>(${Math.round(s.dist)} m do eixo)</small>` : "") : nd(null)}</td></tr>
+        <tr><td>Coordenada</td><td colspan="2">${coordFoto || nd(null)}</td></tr>
+        <tr><td>Data e hora</td><td colspan="2">${it.data ? dataBR(it.data) + ` <small>(${esc(it.data_fonte || "")})</small>` : nd(null)}</td></tr>
+        <tr><td>Empresa</td><td colspan="2">${it.empresa ? esc(it.empresa) : '<em class="nd">não informada</em>'}</td></tr>
+        ${c.faixa || c.nota ? `<tr><td>Faixa / nota</td><td colspan="2">${esc([c.faixa ? "Faixa " + c.faixa : "", c.nota].filter(Boolean).join(" · "))}</td></tr>` : ""}
+        ${final ? `<tr><td>Classificação</td><td colspan="2"><b>${final}</b> <small>${esc(it.fonte || "")}</small></td></tr>` : ""}
+      </table>
+      ${it.divergencias.length ? `<ul class="rv-div">${it.divergencias.map(d => `<li>${esc(d.msg)}</li>`).join("")}</ul>` : ""}
+      ${sug && !it.lote ? `<p class="rv-sug">Sugestão: <b>${esc(sug.rodovia)} · lote ${esc(sug.lote)} · ${fmtEst(sug.est)}</b> (${esc(sug.fonte)}). Só vale se você confirmar.</p>` : ""}
+      ${it.texto_ocr ? `<details><summary>Texto lido no carimbo</summary><p class="mono">${esc(it.texto_ocr)}</p></details>` : ""}
+      ${editavel ? `<div class="rv-acoes">
+        ${it.estado === "aguardando" ? `<button type="button" class="btn pri" data-rv="confirmar">Confirmar e incluir no mapa</button><button type="button" class="btn" data-rv="pendente">Deixar pendente</button>` : ""}
+        ${it.estado === "divergente" ? `<button type="button" class="btn" data-rv="manter_sistema">Manter como está no mapa</button>` : ""}
+        ${sug && it.estado !== "aguardando" ? `<button type="button" class="btn" data-rv="sugestao">Usar sugestão e incluir</button>` : ""}
+        <details class="rv-corrigir" ${it.estado === "pendente" ? "open" : ""}><summary>Corrigir rodovia, lote, estaca ou coordenada</summary>
+          <div class="linha">
+            <label>Segmento <select data-f="seg">${opts}</select></label>
+            <label>Estaca <input type="text" data-f="est" placeholder="203+100" class="curto" value="${it.est != null ? fmtEst(it.est) : (c.est != null ? fmtEst(c.est) : "")}"></label>
+            <label>ou coordenada <input type="text" data-f="coord" placeholder="-25.114944, -50.432787" class="medio"></label>
+            <button type="button" class="btn pri" data-rv="corrigir">${it.estado === "divergente" ? "Aplicar correção" : "Confirmar e incluir no mapa"}</button>
+          </div>
+          <p class="hint">Com estaca, a foto vai para o ponto do eixo nessa estaca. Com coordenada, ela é conferida no eixo do lote escolhido. O registro original da foto não é alterado.</p>
+        </details>
+      </div>` : `<p class="hint">Confirmada${it.quando ? " em " + dataBR(it.quando) : ""}.</p>`}
+      <p class="msg" data-rv-msg role="status"></p>
+    </div>
+  </article>`;
+}
+async function carregarRevisao(){
+  try{
+    const q = new URLSearchParams({estado:rvEstado, inicio:rvInicio}); if ($("#rvEnvio").value) q.set("envio", $("#rvEnvio").value);
+    const j = await api("/api/admin/revisao?" + q);
+    rvElegiveis = j.elegiveis; rvBlocos = j.blocos;
+    document.querySelectorAll("[data-n]").forEach(b => b.textContent = j.contagem[b.dataset.n] || "");
+    $("#nRev").textContent = (j.contagem.pendente || 0) + (j.contagem.aguardando || 0) + (j.contagem.divergente || 0) || "";
+    const fim = Math.min(rvInicio + j.itens.length, j.total);
+    $("#rvTotal").textContent = j.total ? `${j.total} foto(s) · mostrando ${rvInicio + 1}–${fim}` : "";
+    $("#rvAnt").disabled = rvInicio === 0; $("#rvProx").disabled = fim >= j.total;
+    $("#rvLista").innerHTML = j.itens.length ? j.itens.map(cartaoRevisao).join("") : `<p class="hint">Nenhuma foto nesta lista.</p>`;
+  }catch(e){ $("#rvLista").innerHTML = `<p class="msg erro">${esc(e.message)}</p>`; }
+}
+$("#rvLista").addEventListener("click", async e => {
+  const b = e.target.closest("[data-rv]"); if (!b) return;
+  const card = b.closest(".rv"), id = card.dataset.id, out = card.querySelector("[data-rv-msg]");
+  let corpo = {acao: b.dataset.rv};
+  if (b.dataset.rv === "sugestao") corpo = {acao:"confirmar", usar_sugestao:true};
+  if (b.dataset.rv === "corrigir"){
+    const seg = card.querySelector('[data-f="seg"]').value;
+    if (!seg) return msg(out, "Escolha o segmento (rodovia e lote).", "erro");
+    const [rodovia, lote] = seg.split("|");
+    const tEst = card.querySelector('[data-f="est"]').value.trim(), tCo = card.querySelector('[data-f="coord"]').value.trim();
+    corpo = {acao:"corrigir", rodovia, lote};
+    if (tCo){
+      const m = tCo.match(/^(-?\d{1,2}[.,]\d+)\s*[,;\s]\s*(-?\d{1,3}[.,]\d+)$/);
+      if (!m) return msg(out, "Coordenada no formato -25.114944, -50.432787.", "erro");
+      corpo.lat = +m[1].replace(",", "."); corpo.lon = +m[2].replace(",", ".");
+    }
+    if (tEst){ const v = lerEst(tEst); if (v == null) return msg(out, "Estaca no formato km+metros, ex.: 203+100.", "erro"); corpo.est = v; }
+    if (corpo.est == null && corpo.lat == null) return msg(out, "Informe a estaca ou a coordenada.", "erro");
+  }
+  card.querySelectorAll("button,input,select").forEach(x => x.disabled = true); msg(out, "Salvando…");
+  try{
+    const j = await api(`/api/admin/revisao/${id}`, {method:"POST", json:corpo});
+    msg(out, j.estado === "confirmada" ? (j.lote ? `Incluída no mapa: ${j.rodovia} · lote ${j.lote} · ${fmtEst(j.est)}.` : "Mantida como estava no mapa.") : "Deixada pendente.", "ok");
+    setTimeout(() => { carregarRevisao(); carregarEnvios(); }, 900);
+  }catch(err){ card.querySelectorAll("button,input,select").forEach(x => x.disabled = false); msg(out, err.message, "erro"); }
+});
+carregarRevisao();

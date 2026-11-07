@@ -93,7 +93,7 @@ td small{color:var(--ink-3);display:block}
 .cls-estado.erro{color:var(--bad);background:var(--bad-soft)}
 .cls-estado.pendente{color:var(--warn);background:var(--warn-soft)}
 /* correção de data */
-.foto .lnk{background:none;border:0;padding:0;margin-left:4px;color:var(--accent);font:inherit;font-size:11.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.foto .lnk,td .lnk{background:none;border:0;padding:0;margin-left:4px;color:var(--accent);font:inherit;font-size:11.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .foto .dt-man{font-style:normal;font-size:10.5px;color:var(--ok, #2f7d4f);font-weight:600}
 .foto .sug{display:block;margin-top:3px;color:var(--bad, #c62828);font-weight:600}
 .foto .data-form{display:flex;gap:4px;padding:0 8px 8px;flex-wrap:wrap}
@@ -103,3 +103,25 @@ td small{color:var(--ink-3);display:block}
 .topo h1::before{display:none}
 .topo .marca-logo{height:38px}
 @media (max-width: 640px){ .topo .marca-logo{height:30px} .topo .marca-sep{display:none} }
+
+/* revisão da importação */
+input.medio{width:16rem;max-width:100%}
+.abas{display:flex;gap:6px;flex-wrap:wrap}
+.abas b{background:var(--bad);color:#fff;border-radius:99px;padding:0 6px;font-size:11px}
+.abas b:empty{display:none}
+.rv-lista{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+.rv{display:grid;grid-template-columns:200px 1fr;gap:14px;border:1px solid var(--line);border-radius:10px;padding:10px}
+.rv>img{width:200px;aspect-ratio:4/3;object-fit:cover;border-radius:7px;cursor:zoom-in;background:var(--panel-2)}
+.rv h4{margin:0 0 6px;font-size:13px;word-break:break-all}
+.rv table{width:100%;font-size:12.5px}
+.rv td,.rv th{padding:3px 6px;border-bottom:1px solid var(--line)}
+.rv td:first-child{color:var(--ink-3);white-space:nowrap}
+.rv .nd{color:var(--warn);font-style:normal;font-size:11.5px}
+.rv-div{margin:8px 0;padding:8px 8px 8px 24px;background:var(--bad-soft);color:var(--bad);border-radius:7px;font-size:12.5px}
+.rv-sug{margin:6px 0;font-size:12.5px;background:var(--info-soft);color:var(--info);padding:6px 8px;border-radius:7px}
+.rv-acoes{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-top:8px}
+.rv-corrigir{flex-basis:100%;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.rv-corrigir summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
+.rv-corrigir label{margin:6px 0}
+.rv .mono{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap}
+@media (max-width:720px){ .rv{grid-template-columns:1fr} .rv>img{width:100%} }
