@@ -118,7 +118,8 @@ def _n(s):
 def parse_carimbo(txt):
     """Extrai data, lat, lon, km, rodovia e local do texto do carimbo."""
     t = txt.replace("'\"", '"').replace("º", "°").replace("’", "'").replace("‘", "'").replace("”", '"').replace("“", '"').replace("''", '"')
-    out = {"data": None, "lat": None, "lon": None, "km": None, "rodovia": None, "local": None}
+    out = {"data": None, "lat": None, "lon": None, "km": None, "rodovia": None, "local": None,
+           "lote": None, "est": None, "faixa": None, "nota": None}
 
     # Data: "22 de out. de 2026 14:54:56"  |  "22/10/2026 14:54"  |  "2026-10-22 14:54"
     m = re.search(r"(\d{1,2})\s*de\s*([a-zç]{3})[a-zç]*\.?\s*de\s*(\d{4})\D{0,3}(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?", t, re.I)
@@ -171,6 +172,7 @@ def parse_carimbo(txt):
     m = re.search(r"Locali\w*\W{0,4}(\d{1,4})\s*\+\s*(\d{1,3})", t, re.I) or re.search(r"\b(\d{2,4})\s*\+\s*(\d{3})\b", t)
     if m:
         out["km"] = int(m.group(1)) + int(m.group(2)) / 1000
+        out["est"] = int(m.group(1)) * 1000 + int(m.group(2))   # estaca escrita no carimbo (km+metros)
     else:
         m = re.search(r"\bkm\s*(\d{1,4}(?:[.,]\d+)?)", t, re.I)
         if m:
@@ -181,6 +183,21 @@ def parse_carimbo(txt):
     m = re.search(r"\b(BR|PR|SP|SC|RS|MG)\s*-?\s*(\d{3})", t)
     if m:
         out["rodovia"] = "%s-%s" % (m.group(1), m.group(2))
+    if out["rodovia"] is None:
+        # rótulo "Rodovia:" com a sigla lida errado pelo OCR (GR-373, 8R-277, BK-373…)
+        m = re.search(r"Rodovia\W{0,4}[A-Z8]{1,2}\s*-?\s*(\d{3})", t, re.I)
+        if m:
+            out["rodovia"] = "BR-%s" % m.group(1)
+    # carimbo do serviço: "Rodovia: BR-373/PR · Lote 04" | "Localização: 203+100 — Decrescente | Faixa 1" | "Nota: Tapa buraco"
+    m = re.search(r"\bLote\s*[:.]?\s*0*(\d{1,2})\b", t, re.I)
+    if m:
+        out["lote"] = str(int(m.group(1)))
+    m = re.search(r"\bFaixa\s*[:.]?\s*(\d{1,2})\b", t, re.I)
+    if m:
+        out["faixa"] = m.group(1)
+    m = re.search(r"\bNota\s*[:.]\s*([^|\n]{2,60})", t, re.I)
+    if m:
+        out["nota"] = m.group(1).strip()
 
     # Local: primeira linha só com letras depois da linha da rodovia
     linhas = [l.strip() for l in t.splitlines() if l.strip()]
@@ -253,16 +270,21 @@ def processar(nome, conteudo, lote):
         r["data"], r["data_fonte"] = d, "exif"
     if coord_ok(la, lo):
         r["lat"], r["lon"], r["coord_fonte"] = round(la, 7), round(lo, 7), "exif"
-    if r["data"] is None or r["lat"] is None:
-        p, txt, _ = ler_carimbo(im_rgb)
-        if p:
-            if r["data"] is None and p["data"]:
-                r["data"], r["data_fonte"] = p["data"], "carimbo"
-            if r["lat"] is None and coord_ok(p["lat"], p["lon"]):
-                r["lat"], r["lon"], r["coord_fonte"] = round(p["lat"], 7), round(p["lon"], 7), "carimbo"
-            r["km"], r["rodovia"], r["local"] = p["km"], p["rodovia"], p["local"]
-            if p.get("sentido"): r["sentido"] = p["sentido"]
-            r["texto_ocr"] = " | ".join(l.strip() for l in txt.splitlines() if l.strip())[-300:]
+    # o carimbo é lido sempre que houver OCR: rodovia, lote e estaca escritos na foto vêm primeiro,
+    # depois a coordenada do carimbo; o EXIF só completa o que o carimbo não trouxer
+    p, txt, _ = ler_carimbo(im_rgb)
+    if p:
+        if r["data"] is None and p["data"]:
+            r["data"], r["data_fonte"] = p["data"], "carimbo"
+        if coord_ok(p["lat"], p["lon"]):
+            if r["coord_fonte"] == "exif" and dist_m((r["lat"], r["lon"]), (p["lat"], p["lon"])) > 50:
+                r["coord_exif"] = [r["lat"], r["lon"]]   # não descarta: fica para a revisão comparar
+            r["lat"], r["lon"], r["coord_fonte"] = round(p["lat"], 7), round(p["lon"], 7), "carimbo"
+        r["km"], r["rodovia"], r["local"] = p["km"], p["rodovia"], p["local"]
+        if p.get("sentido"): r["sentido"] = p["sentido"]
+        for k_in, k_out in (("lote", "lote_carimbo"), ("est", "est_carimbo"), ("faixa", "faixa"), ("nota", "nota")):
+            if p.get(k_in) is not None: r[k_out] = p[k_in]
+        r["texto_ocr"] = " | ".join(l.strip() for l in txt.splitlines() if l.strip())[-400:]
     # trava: a foto não pode ser posterior ao envio pelo WhatsApp (data no nome do arquivo)
     envio = data_do_nome(r["arquivo"])
     if r["data_fonte"] == "carimbo" and envio and r["data"] > envio and \

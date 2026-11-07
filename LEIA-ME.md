@@ -78,6 +78,35 @@ homologação, atualização automática, backup e migração dos dados). Rode s
 5. **Caminhos maliciosos** (`../`, caminho absoluto, `C:\`, link simbólico, caractere nulo) não
    são lidos e viram ocorrência. Arquivos que não são foto (vídeo, .exe…) também.
 6. Quando termina, a versão dos dados muda e o relatório aberto se atualiza sozinho.
+7. **Empresa executora (obrigatória):** informada no envio e associada a todas as fotos do ZIP.
+   Aparece no painel de detalhes do ponto, no relatório e no CSV. Dá para corrigir depois, na
+   tabela de envios ("editar").
+
+## Leitura do carimbo e revisão antes de entrar no mapa
+
+* **Ordem de leitura de cada foto:** (1) rodovia, lote e estaca/km escritos no carimbo
+  (`Rodovia: BR-373/PR · Lote 04`, `Localização: 203+100 — Decrescente | Faixa 1`, `Nota: …`);
+  (2) coordenada escrita no carimbo; (3) EXIF, nome do arquivo e data. O carimbo é lido sempre que
+  o Tesseract está instalado; se a coordenada do carimbo diferir da do EXIF, as duas ficam guardadas
+  e a foto vai para revisão.
+* **Segmentos elegíveis:** BR-277 lotes 02 e 03 e BR-373 lote 04 (`mapa/classificacao.py`).
+* **Classificação automática** só quando os dados conferem: a estaca do carimbo existe no eixo do
+  lote do carimbo e/ou a coordenada cai nesse lote, a até o limite do eixo (Regras). A foto fica
+  *aguardando confirmação* e **só entra no mapa quando o administrador confirma** (por foto ou o
+  envio inteiro, no botão "Confirmar N no mapa").
+* **Pendente** quando falta dado, quando há conflito (estaca do carimbo x coordenada, lote do
+  carimbo x lote da coordenada, rodovia x lote, carimbo x EXIF, coordenada longe do eixo), quando o
+  segmento não é elegível, quando o eixo do lote não está carregado ou quando é provável reenvio
+  (mesma data/hora e posição de foto existente). A foto fica fora do mapa até o administrador
+  corrigir rodovia, lote, estaca ou coordenada e confirmar. Uma sugestão (estaca do carimbo ou da
+  coordenada) pode ser mostrada, mas nunca é aplicada sozinha, e nunca é de outro lote.
+* **Fotos que já estavam no mapa:** ao iniciar o sistema (e no botão "Reanalisar fotos do mapa") o
+  carimbo guardado é comparado com o sistema. Divergências aparecem em *Divergências no mapa*; a foto
+  **continua no mapa** até o administrador escolher "manter como está" ou corrigir.
+* **Nada é sobrescrito:** a linha original da foto não muda; a classificação fica em `revisao_foto`
+  e cada decisão (antes e depois) na auditoria, visível no histórico da foto.
+* **Permissões no servidor:** todas as rotas de envio, revisão, confirmação, decisão e edição
+  exigem administrador (403 para visualizador), além de ocultar os botões na tela.
 
 ## Regras existentes preservadas
 
