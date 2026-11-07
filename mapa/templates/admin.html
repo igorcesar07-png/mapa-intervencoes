@@ -20,7 +20,7 @@
   <span class="marca-sep" aria-hidden="true"></span>
   <h1 class="marca-produto">Painel do administrador</h1>
   <nav>
-    <a href="#envio">Envio</a><a href="#ocorrencias">Ocorrências <b id="nOc"></b></a><a href="#classificar">Classificar</a>
+    <a href="#envio">Envio</a><a href="#revisao">Revisão <b id="nRev"></b></a><a href="#ocorrencias">Ocorrências <b id="nOc"></b></a><a href="#classificar">Classificar</a>
     <a href="#regras">Regras</a><a href="#eixo">Eixo</a><a href="#usuarios">Usuários</a><a href="#backup">Backup</a>
     <a class="destaque" href="{{ url_for('rotas.relatorio') }}">Abrir relatório</a>
     <a href="{{ url_for('rotas.conta') }}">Conta</a>
@@ -31,7 +31,10 @@
   <section class="card" id="envio">
     <h2>Enviar fotos</h2>
     <p class="hint">Envie o ZIP com as fotos do serviço (.jpg, .jpeg, .png ou .heic). O processamento roda em segundo plano: você pode continuar usando o sistema, e o relatório se atualiza sozinho quando terminar. ZIP ou foto já enviados não são processados de novo.</p>
+    <p class="hint">Cada foto é lida na ordem: <b>rodovia, lote e estaca escritos no carimbo</b>; depois a <b>coordenada do carimbo</b>; por último EXIF, nome do arquivo e data. Entram no mapa só fotos da <b>BR-277 lotes 02 e 03</b> e da <b>BR-373 lote 04</b>. Depois da leitura, as fotos ficam em <a href="#revisao">Revisão</a>: as classificadas com segurança esperam a sua confirmação, e as duvidosas ficam pendentes até você decidir.</p>
     <form id="fZip" class="linha">
+      <label>Empresa que executou os serviços <input type="text" id="zEmpresa" list="empresasUsadas" maxlength="120" required placeholder="ex.: Neovia Conservação" class="medio"></label>
+      <datalist id="empresasUsadas"></datalist>
       <input type="file" id="zip" accept=".zip,application/zip" required>
       <button class="btn pri" type="submit" id="btnZip">Enviar ZIP</button>
     </form>
@@ -39,9 +42,27 @@
     <p class="msg" id="upMsg" role="status"></p>
     <h3>Envios recentes</h3>
     <div class="tabela"><table>
-      <thead><tr><th>#</th><th>Arquivo / lote</th><th>Estado</th><th>Progresso</th><th>Resultado</th><th>Enviado</th></tr></thead>
-      <tbody id="tEnvios"><tr><td colspan="6" class="hint">Carregando…</td></tr></tbody>
+      <thead><tr><th>#</th><th>Arquivo / lote</th><th>Estado</th><th>Progresso</th><th>Resultado</th><th>Revisão</th><th>Enviado</th></tr></thead>
+      <tbody id="tEnvios"><tr><td colspan="7" class="hint">Carregando…</td></tr></tbody>
     </table></div>
+  </section>
+
+  <section class="card" id="revisao">
+    <h2>Revisão da importação</h2>
+    <p class="hint"><b>Aguardando confirmação</b>: a leitura bateu com um segmento elegível; confira e confirme para entrar no mapa. <b>Pendentes</b>: dados insuficientes ou conflitantes — corrija rodovia, lote e estaca (ou coordenada) e confirme; enquanto isso a foto fica fora do mapa. <b>Divergências no mapa</b>: fotos que já estavam no mapa e cujo carimbo não bate com o sistema; elas continuam no mapa até você decidir. Nada é trocado sem a sua confirmação, e cada decisão fica no histórico.</p>
+    <div class="linha">
+      <div class="abas" role="tablist">
+        <button type="button" class="btn on" data-rest="pendente">Pendentes <b data-n="pendente"></b></button>
+        <button type="button" class="btn" data-rest="aguardando">Aguardando confirmação <b data-n="aguardando"></b></button>
+        <button type="button" class="btn" data-rest="divergente">Divergências no mapa <b data-n="divergente"></b></button>
+        <button type="button" class="btn" data-rest="confirmada">Confirmadas <b data-n="confirmada"></b></button>
+      </div>
+      <label>Envio <select id="rvEnvio"><option value="">Todos</option></select></label>
+      <button type="button" class="btn" id="rvReanalisar" title="Compara de novo o carimbo das fotos do mapa com o sistema; só sinaliza">Reanalisar fotos do mapa</button>
+    </div>
+    <p class="msg" id="rvMsg" role="status"></p>
+    <div class="rv-lista" id="rvLista"></div>
+    <div class="linha"><button class="btn" id="rvAnt" type="button">Anteriores</button><button class="btn" id="rvProx" type="button">Próximas</button><span class="hint" id="rvTotal"></span></div>
   </section>
 
   <section class="card" id="ocorrencias">
