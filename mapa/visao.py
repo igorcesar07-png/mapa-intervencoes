@@ -29,18 +29,33 @@ def calculo(con):
     with _lock:
         if _cache["versao"] == versao:
             return _cache
-        fotos = []
+        decisoes = {r["foto_id"]: dict(r) for r in con.execute("SELECT * FROM decisoes_foto")}
+        fotos, excluidas = [], []
         for r in con.execute(f"SELECT {', '.join(CAMPOS_FOTO)}, importado_em FROM fotos"):
             f = dict(r)
             f["extras"] = json.loads(f["extras"] or "{}")
             if f["data"] and not data_valida(f["data"], f.pop("importado_em")):
                 f["extras"]["data_invalida"], f["data"], f["data_fonte"] = f["data"], None, None
             f.pop("importado_em", None)
+            dec = decisoes.get(f["id"])
+            if dec and dec["excluida"]:
+                # excluída: fora de tudo (mapa, listas, relatórios, exportações); fica no banco para restaurar
+                excluidas.append({"id": f["id"], "arquivo": f["arquivo"], "lote": f["lote"], "data": f["data"],
+                                  "motivo": dec["motivo"], "quando": dec["quando"]})
+                continue
+            if dec and dec["decisao"] == "incorporar" and dec["lat"] is not None:
+                # o registro original não muda: a posição escolhida vale só para o cálculo e o mapa
+                f["coord_original"] = [f["lat"], f["lon"]]
+                f["lat"], f["lon"] = dec["lat"], dec["lon"]
+                f["decisao"], f["dec_est"], f["dec_bloco"] = "incorporar", dec["est"], dec["bloco"]
+            elif dec and dec["decisao"] == "remover":
+                f["decisao"] = "remover"
             fotos.append(f)
         blocos = carregar_blocos(con)
         calc = regras.calcular(fotos, blocos, p)
         calc["visiveis"] = {gp["rep"] for gp in calc["grupos"] if gp["tapado"]}
-        _cache.update(versao=versao, calc=calc, fotos={f["id"]: f for f in fotos}, blocos=blocos, params=p)
+        _cache.update(versao=versao, calc=calc, fotos={f["id"]: f for f in fotos}, blocos=blocos, params=p,
+                      excluidas=sorted(excluidas, key=lambda e: e["quando"] or "", reverse=True))
         return _cache
 
 
@@ -52,7 +67,8 @@ def invalidar():
 def pode_ver_foto(con, papel, foto_id):
     c = calculo(con)
     if foto_id not in c["fotos"]:
-        return False
+        # foto excluída: só o administrador vê (para conferir e restaurar)
+        return papel == "admin" and any(e["id"] == foto_id for e in c.get("excluidas") or [])
     return papel == "admin" or foto_id in c["calc"]["visiveis"]
 
 
@@ -70,9 +86,12 @@ def relatorio(con, papel):
         for f in fotos.values():
             r = {k: f[k] for k in CAMPOS_FOTO if k != "extras"}
             r.update({k: v for k, v in f["extras"].items() if k != "thumb"})
+            for k in ("decisao", "coord_original"):
+                if f.get(k) is not None:
+                    r[k] = f[k]
             r["d"] = calc["deriv"][f["id"]]
             regs.append(r)
-        base.update(registros=regs, grupos=calc["grupos"],
+        base.update(registros=regs, grupos=calc["grupos"], excluidas=c["excluidas"],
                     parametros={k: p[k] for k in ("limite_anomalia_m", "gps_travado_ativo", "gps_travado_min",
                                                   "isolado_m", "agrupa_m", "nao_classificadas_contam")})
         return base
@@ -140,7 +159,7 @@ def exportar_csv(con, papel, filtros):
 
     if papel == "admin":
         grupo_tapado = {gp["id"]: gp["tapado"] for gp in calc["grupos"]}
-        w.writerow(base_cab + ["classe", "situacao", "inconsistencia", "motivo", "duplicata", "buraco"])
+        w.writerow(base_cab + ["classe", "situacao", "inconsistencia", "motivo", "duplicata", "buraco", "decisao_admin"])
         for f in sorted(fotos.values(), key=lambda f: (f["data"] or "9999", f["arquivo"])):
             d = calc["deriv"][f["id"]]
             if not passa_filtro(f, d, filtros):
@@ -151,6 +170,8 @@ def exportar_csv(con, papel, filtros):
                 sit = "duplicata"
             elif f["classe"] == "outro":
                 sit = "não relacionada"
+            elif d.get("removida"):
+                sit = "removida do mapa de calor"
             elif d["anomalia"]:
                 sit = "inconsistência"
             elif d.get("grupo") and not grupo_tapado.get(d["grupo"]):
@@ -160,7 +181,8 @@ def exportar_csv(con, papel, filtros):
             else:
                 sit = "foto extra do mesmo buraco"
             w.writerow(linha(f, d) + [f["classe"] or "", sit, "sim" if d["anomalia"] else "não", d["motivo"] or "",
-                                      "sim" if d["dup"] else "", d.get("grupo") or ""])
+                                      "sim" if d["dup"] else "", d.get("grupo") or "",
+                                      "incorporada na estaca" if d.get("incorporada") else "removida do mapa de calor" if d.get("removida") else ""])
     else:
         w.writerow(base_cab)
         for gp in calc["grupos"]:

@@ -8,7 +8,7 @@ from flask import (Blueprint, Response, abort, current_app, g, jsonify, redirect
                    send_file, send_from_directory, session, url_for)
 
 from . import eixo as eixo_mod
-from . import processamento, visao
+from . import processamento, regras, visao
 from .datas import data_valida
 from .db import agora, auditar, nova_versao, parametros, set_parametro
 from .seguranca import (PAPEIS, SENHA_MIN, autenticar, eh_admin, hash_senha, iniciar_sessao, requer_admin,
@@ -319,6 +319,84 @@ def api_classificar(foto_id):
     # devolve o que ficou gravado, para a tela só confirmar depois de ler do banco
     salvo = g.db.execute("SELECT classe, motivo_exclusao, classificado_em FROM fotos WHERE id=?", (foto_id,)).fetchone()
     return jsonify(ok=True, **dict(salvo))
+
+
+# ------------------------------------------------------------------ administrador: decisão sobre uma foto
+ACOES_DECISAO = ("remover", "incorporar", "desfazer", "excluir", "restaurar")
+TIPOS_LOCAL = ("sem_coordenada", "coordenada_corrigida", "coord_revisada")
+
+
+def _decisao_atual(foto_id):
+    r = g.db.execute("SELECT decisao, est, bloco, lat, lon, excluida, motivo FROM decisoes_foto WHERE foto_id=?", (foto_id,)).fetchone()
+    return dict(r) if r else {"decisao": None, "est": None, "bloco": None, "lat": None, "lon": None, "excluida": 0, "motivo": None}
+
+
+@bp.post("/api/admin/fotos/<foto_id>/decisao")
+@requer_admin
+def api_decisao(foto_id):
+    """Decisão do administrador: remover do mapa de calor, incorporar numa estaca, desfazer, excluir ou restaurar.
+    A linha da foto não é alterada; a decisão fica em decisoes_foto e o antes/depois na auditoria."""
+    if not ID_FOTO.match(foto_id) or not g.db.execute("SELECT 1 FROM fotos WHERE id=?", (foto_id,)).fetchone():
+        abort(404)
+    d = _json()
+    acao = d.get("acao")
+    if acao not in ACOES_DECISAO:
+        return jsonify(erro="Ação inválida."), 400
+    antes = _decisao_atual(foto_id)
+    novo = dict(antes)
+    if acao == "remover":
+        novo.update(decisao="remover", est=None, bloco=None, lat=None, lon=None)
+    elif acao == "incorporar":
+        bloco = str(d.get("bloco") or "").strip()[:20]
+        try:
+            est = float(d.get("est"))
+        except (TypeError, ValueError):
+            return jsonify(erro="Informe a estaca (ex.: 250+930)."), 400
+        blocos = visao.carregar_blocos(g.db)
+        if bloco not in blocos:
+            return jsonify(erro="Escolha um bloco com eixo carregado."), 400
+        p = regras.estaca_para_ponto(blocos, bloco, est)
+        if not p:
+            return jsonify(erro=f"A estaca {regras.fmt_est(est)} não está no eixo do Bloco {bloco}."), 400
+        novo.update(decisao="incorporar", est=est, bloco=bloco, lat=round(p[0], 7), lon=round(p[1], 7))
+    elif acao == "desfazer":
+        novo.update(decisao=None, est=None, bloco=None, lat=None, lon=None)
+    elif acao == "excluir":
+        if d.get("confirmar") is not True:
+            return jsonify(erro="Confirme a exclusão."), 400
+        novo.update(excluida=1, motivo=(str(d.get("motivo") or "").strip()[:200] or None))
+    elif acao == "restaurar":
+        novo.update(excluida=0, motivo=None)
+    if novo == antes:
+        return jsonify(ok=True, decisao=novo, sem_mudanca=True)
+    if novo["decisao"] is None and not novo["excluida"]:
+        g.db.execute("DELETE FROM decisoes_foto WHERE foto_id=?", (foto_id,))
+    else:
+        g.db.execute("INSERT INTO decisoes_foto(foto_id, decisao, est, bloco, lat, lon, excluida, motivo, por, quando) "
+                     "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(foto_id) DO UPDATE SET decisao=excluded.decisao, est=excluded.est, "
+                     "bloco=excluded.bloco, lat=excluded.lat, lon=excluded.lon, excluida=excluded.excluida, motivo=excluded.motivo, "
+                     "por=excluded.por, quando=excluded.quando",
+                     (foto_id, novo["decisao"], novo["est"], novo["bloco"], novo["lat"], novo["lon"], novo["excluida"],
+                      novo["motivo"], g.usuario["id"], agora()))
+    if acao in ("remover", "incorporar", "excluir"):
+        # a posição foi decidida: avisos de localização desta foto saem da lista de revisão
+        g.db.execute(f"UPDATE ocorrencias SET resolvida=1, resolvida_por=?, resolvida_em=? WHERE foto_id=? AND resolvida=0 "
+                     f"AND tipo IN ({','.join('?' * len(TIPOS_LOCAL))})", (g.usuario["id"], agora(), foto_id, *TIPOS_LOCAL))
+    nova_versao(g.db)
+    visao.invalidar()
+    auditar(g.db, g.usuario["id"], f"decisao_{acao}", {"foto": foto_id, "antes": antes, "depois": novo})
+    return jsonify(ok=True, decisao=novo)
+
+
+@bp.get("/api/admin/fotos/<foto_id>/historico")
+@requer_admin
+def api_historico_foto(foto_id):
+    if not ID_FOTO.match(foto_id):
+        abort(404)
+    rows = g.db.execute("SELECT a.acao, a.detalhe, a.quando, u.email FROM auditoria a LEFT JOIN usuarios u ON u.id=a.usuario_id "
+                        "WHERE a.detalhe LIKE ? ORDER BY a.id DESC LIMIT 50", (f'%"foto": "{foto_id}"%',)).fetchall()
+    return jsonify(historico=[{"acao": r["acao"], "quando": r["quando"], "por": r["email"],
+                               "detalhe": json.loads(r["detalhe"] or "{}")} for r in rows])
 
 
 # ------------------------------------------------------------------ administrador: parâmetros e eixo

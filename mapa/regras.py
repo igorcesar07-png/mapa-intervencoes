@@ -104,6 +104,23 @@ def projetar(r, linhas):
     return out
 
 
+def estaca_para_ponto(blocos, bloco, est):
+    """Ponto (lat, lon) do eixo do bloco na estaca (em metros), interpolando entre as estacas do KMZ.
+    None se o bloco não existe, não tem estacas ou a estaca está fora do trecho (mais de 50 m além das pontas)."""
+    b = blocos.get(str(bloco))
+    if not b:
+        return None
+    pts = sorted((p for p in b["pts"] if p[2] is not None), key=lambda p: p[2])
+    if not pts or est < pts[0][2] - 50 or est > pts[-1][2] + 50:
+        return None
+    for a, c in zip(pts, pts[1:]):
+        if a[2] <= est <= c[2]:
+            t = 0.0 if c[2] == a[2] else (est - a[2]) / (c[2] - a[2])
+            return (a[0] + t * (c[0] - a[0]), a[1] + t * (c[1] - a[1]))
+    q = pts[0] if est < pts[0][2] else pts[-1]
+    return (q[0], q[1])
+
+
 # ------------------------------------------------------------------ cálculo completo
 def calcular(fotos, blocos, params):
     """fotos: lista de dicts (linhas da tabela). Retorna derivados por foto e grupos."""
@@ -126,6 +143,14 @@ def calcular(fotos, blocos, params):
         d = {"dup": dup.get(r["id"]), "anomalia": False, "motivo": None, "travado": False}
         if r["lat"] is not None and tem_eixo:
             d.update(projetar(r, linhas))
+        dec = r.get("decisao")
+        if dec == "incorporar":
+            # posição escolhida pelo administrador: ponto normal, na estaca e no bloco que ele definiu
+            d.update(est=r["dec_est"], bloco=r["dec_bloco"], incorporada=True)
+            if d.get("dist") is not None:
+                d["dist"] = min(d["dist"], 1.0)
+        elif dec == "remover":
+            d["removida"] = True
         der[r["id"]] = d
 
     # GPS travado: mesma coordenada exata em fotos com minutos de diferença
@@ -146,6 +171,8 @@ def calcular(fotos, blocos, params):
 
     for r in com:
         d = der[r["id"]]
+        if d.get("incorporada") or d.get("removida"):
+            continue   # o administrador já decidiu: não é mais inconsistência
         motivos = []
         if tem_eixo:
             if d.get("dist") is not None and d["dist"] > lim:
@@ -162,7 +189,8 @@ def calcular(fotos, blocos, params):
         d["motivo"] = " · ".join(motivos) or None
 
     # buracos: fotos válidas do mesmo dia a <= 25 m do centro do grupo
-    validas = [r for r in com if not der[r["id"]]["dup"] and r["classe"] != "outro" and not der[r["id"]]["anomalia"]]
+    validas = [r for r in com if not der[r["id"]]["dup"] and r["classe"] != "outro" and not der[r["id"]]["anomalia"]
+               and not der[r["id"]].get("removida")]
     grupos = []
     for r in sorted(validas, key=lambda r: r["data"] or ""):
         dia = (r["data"] or "")[:10]

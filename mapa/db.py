@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS eixo_blocos(
   bloco TEXT PRIMARY KEY, rodovia TEXT NOT NULL DEFAULT '', fonte TEXT NOT NULL DEFAULT '',
   pts TEXT NOT NULL, atualizado_em TEXT NOT NULL
 );
+-- decisão do administrador sobre uma foto (a linha original em "fotos" nunca é alterada):
+--   remover    = fica fora do mapa de calor, mas a foto e o registro continuam guardados
+--   incorporar = entra no mapa como ponto normal, na estaca escolhida (lat/lon do eixo nessa estaca)
+--   excluida   = some do sistema (relatório, listas, exportações); continua no banco e pode ser restaurada
+-- O histórico de cada mudança fica na auditoria (antes e depois).
+CREATE TABLE IF NOT EXISTS decisoes_foto(
+  foto_id TEXT PRIMARY KEY REFERENCES fotos(id),
+  decisao TEXT CHECK(decisao IS NULL OR decisao IN ('remover','incorporar')),
+  est REAL, bloco TEXT, lat REAL, lon REAL,
+  excluida INTEGER NOT NULL DEFAULT 0,
+  motivo TEXT,
+  por INTEGER, quando TEXT
+);
 CREATE TABLE IF NOT EXISTS parametros(chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS auditoria(
   id INTEGER PRIMARY KEY, usuario_id INTEGER, acao TEXT NOT NULL, detalhe TEXT, quando TEXT NOT NULL
