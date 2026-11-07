@@ -15,7 +15,7 @@
   const ATIVO = !!(CFG.apiKey && CFG.projectId);
   const BASE = ATIVO ? `https://firestore.googleapis.com/v1/projects/${CFG.projectId}/databases/(default)/documents` : "";
   const INTENCOES = ["classe", "data", "est", "bloco", "lat", "lon", "incluir", "decisao", "excluida", "motivo_exc"];
-  const CAMPOS_PUB = ["id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "km", "rodovia", "local", "sentido"];
+  const CAMPOS_PUB = ["id", "arquivo", "lote", "data", "data_fonte", "lat", "lon", "km", "rodovia", "local", "sentido", "empresa"];
   const AJ = new Map();
   let sessao = null, ajustesLidos = false, camadasLidas = false, baseCache = null;
 

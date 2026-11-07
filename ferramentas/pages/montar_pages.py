@@ -111,7 +111,7 @@ troca('''if ($("#btnCsv")) $("#btnCsv").onclick = () => {
   // mesmo CSV do sistema (administrador): todas as fotos do filtro, com situação e motivo
   const num = v => v == null ? "" : String(v).replace(".", ",");
   const f = filtros(), gp = new Map(S.grupos.map(g => [g.id, g]));
-  const cab = ["arquivo","data","fonte_data","latitude","longitude","bloco","estaca","km","rodovia","local","sentido","lote","dist_eixo_m","classe","situacao","inconsistencia","motivo","duplicata","buraco","decisao_admin"];
+  const cab = ["arquivo","data","fonte_data","latitude","longitude","bloco","estaca","km","rodovia","local","sentido","lote","dist_eixo_m","classe","situacao","inconsistencia","motivo","duplicata","buraco","decisao_admin","empresa"];
   const linhas = [cab.join(";")];
   const regs = S.todos.filter(r => passa(r, f)).sort((a, b) => (a.data||"9999").localeCompare(b.data||"9999") || a.arquivo.localeCompare(b.arquivo));
   for (const r of regs){
@@ -120,7 +120,7 @@ troca('''if ($("#btnCsv")) $("#btnCsv").onclick = () => {
       : d.grupo && gp.get(d.grupo) && !gp.get(d.grupo).tapado ? "buraco sem foto de tapado" : d.rep ? "válida" : "foto extra do mesmo buraco";
     linhas.push([r.arquivo, (r.data||"").replace("T"," "), r.data_fonte||"", num(r.lat), num(r.lon), d.bloco||"",
       d.est != null ? fmtEst(d.est) : "", d.est != null ? num((d.est/1000).toFixed(3)) : "", rod, r.local||"", r.sentido||"", r.lote||"",
-      d.dist != null ? Math.round(d.dist) : "", r.classe||"", sit, d.anomalia ? "sim" : "não", d.motivo||"", d.dup ? "sim" : "", d.grupo||"", d.incorporada ? "incorporada na estaca" : d.removida ? "removida do mapa de calor" : ""]
+      d.dist != null ? Math.round(d.dist) : "", r.classe||"", sit, d.anomalia ? "sim" : "não", d.motivo||"", d.dup ? "sim" : "", d.grupo||"", d.incorporada ? "incorporada na estaca" : d.removida ? "removida do mapa de calor" : "", r.empresa||""]
       .map(v => /[;"\\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : v).join(";"));
   }
   const url = URL.createObjectURL(new Blob(["\\ufeff" + linhas.join("\\r\\n")], {type:"text/csv;charset=utf-8"}));
