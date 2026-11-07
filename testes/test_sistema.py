@@ -275,7 +275,7 @@ def test_visualizador_nao_ve_restritos(app):
     assert v.get(f"/api/fotos/{1:016x}/miniatura").status_code == 200
     # a página do visualizador não traz as seções do administrador
     html = v.get("/").get_data(as_text=True)
-    assert "anomList" not in html and "semGrid" not in html and 'href="/admin"' not in html and 'id="btnCsv"' not in html
+    assert "anomList" not in html and "semGrid" not in html and 'href="/admin"' not in html and 'id="btnCsv"' not in html and 'id="lCalor"' not in html
 
     # administrador vê tudo, com o motivo de cada restrição
     a = entrar(app, "adm@teste.com", SENHA_ADM)

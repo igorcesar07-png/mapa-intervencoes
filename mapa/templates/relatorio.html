@@ -69,6 +69,7 @@
       <p class="hint">A data usada é a do <b>carimbo da foto</b> (ou EXIF da câmera), nunca a data do arquivo.</p>
     </section>
 
+    {% if admin %}
     <section>
       <h2>Camadas</h2>
       <label class="chk"><input type="checkbox" id="lSeg" checked> Intensidade por trecho <em>buracos/km</em></label>
@@ -87,6 +88,7 @@
       </div>
       <div class="legend">menos <i></i> mais</div>
     </section>
+    {% endif %}
 
     <section>
       <h2>Eixo da rodovia</h2>

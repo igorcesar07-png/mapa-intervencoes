@@ -18,7 +18,10 @@ const fmtEst = m => { m = Math.round(m/10)*10; return `${Math.floor(m/1000)}+${S
 const mini = id => `/api/fotos/${encodeURIComponent(id)}/miniatura`;
 const grande = id => `/api/fotos/${encodeURIComponent(id)}/imagem`;
 function toast(msg, ms=3200){ const t=$("#toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"), ms); }
-const marcado = sel => { const el = $(sel); return !!(el && el.checked); };
+// camadas: só o administrador tem o painel; o visualizador usa a configuração padrão
+const PADRAO_CAMADAS = {"#lSeg":true, "#oFundo":true, "#lCalor":true, "#lPontos":true, "#lTracado":true, "#lKm":true};
+const marcado = sel => { const el = $(sel); return el ? el.checked : !!PADRAO_CAMADAS[sel]; };
+const valor = (sel, padrao) => { const el = $(sel); return el ? +el.value : padrao; };
 /* dia "AAAA-MM-DD" que existe no calendário e não está no futuro (o servidor já valida; aqui é defesa) */
 function diaValido(d){
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d || "")) return false;
@@ -255,7 +258,7 @@ function desenhar(){
   if (calor){ mapa.removeLayer(calor); calor = null; }
   if (marcado("#lCalor") && tapados.length){
     calor = L.heatLayer(tapados.map(g => [g.lat, g.lon, 1]), {
-      radius:+$("#rRaio").value, blur:Math.round(+$("#rRaio").value*0.8), max:+$("#rMax").value, minOpacity:.35, maxZoom:14,
+      radius:valor("#rRaio", 22), blur:Math.round(valor("#rRaio", 22)*0.8), max:valor("#rMax", 3), minOpacity:.35, maxZoom:14,
       gradient:{.15:"#2b6cb0", .35:"#38b2ac", .55:"#ecc94b", .75:"#ed8936", 1:"#e53e3e"}
     }).addTo(mapa);
   }
@@ -662,7 +665,7 @@ function graficoDia(regs){
 /* ============================================================ eventos */
 for (const id of ["#fDe","#fAte","#fMes","#fLote"]) $(id).addEventListener("change", () => { S.filtroDia = ""; montarFiltros(); desenhar(); });
 for (const id of ["#lCalor","#lPontos","#lAnom","#oSoAntes","#lTracado","#lKm","#lSeg","#rRaio","#rMax","#binKm"]){ const el = $(id); if (el) el.addEventListener("input", desenhar); }
-$("#oFundo").addEventListener("input", aplicarFundo);
+if ($("#oFundo")) $("#oFundo").addEventListener("input", aplicarFundo);
 if ($("#btnCsv")) $("#btnCsv").onclick = () => {
   const f = filtros(), q = new URLSearchParams(Object.entries({...f, blocos:f.blocos.join(",")}).filter(([,v]) => v));
   location.href = "/api/exportar.csv" + (q.toString() ? "?" + q : "");
