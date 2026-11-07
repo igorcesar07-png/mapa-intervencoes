@@ -503,3 +503,13 @@ def test_data_muito_antes_do_envio_e_correcao_manual(app):
     con = conectar(app.config["MAPA"].DB_PATH)
     assert processamento.sinalizar_datas_antes_do_envio(con) == 0
     con.close()
+
+
+def test_marca_publica_sem_login_e_recursos_protegidos(app):
+    c = app.test_client()
+    r = c.get("/marca/neovia-logo.png")
+    assert r.status_code == 200 and r.mimetype == "image/png"
+    assert c.get("/marca/../relatorio.js").status_code == 404
+    assert c.get("/recursos/relatorio.js").status_code in (302, 401, 403)
+    pagina = c.get("/login").get_data(as_text=True)
+    assert "/marca/neovia-logo.png" in pagina and "Overpass" in pagina

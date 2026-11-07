@@ -60,6 +60,15 @@ def recursos(nome):
     return resp
 
 
+@bp.get("/marca/<nome>")
+def marca_publica(nome):
+    """Só o logotipo e os ícones da Neovia (identidade visual, sem dados): a tela de login precisa
+    deles antes da autenticação. Todo o resto de /recursos continua exigindo login."""
+    resp = send_from_directory(RECURSOS / "marca", nome, max_age=86400)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
 # ------------------------------------------------------------------ páginas
 @bp.get("/")
 @requer_login

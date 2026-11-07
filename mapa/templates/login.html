@@ -3,27 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Entrar · Mapa de Intervenções</title>
+<title>Entrar · Mapa de Intervenções · Neovia Engenharia</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('rotas.marca_publica', nome='favicon-32.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('rotas.marca_publica', nome='favicon-180.png') }}">
+<meta name="theme-color" content="#D20A11">
 <style>
-:root{--bg:#f3f1ec;--panel:#fbfaf7;--line:#dcd7cc;--ink:#1d1f22;--ink-2:#5c5f66;--accent:#e8620c;--accent-ink:#fff;--bad:#c62828;--bad-soft:#fbe0de}
-@media (prefers-color-scheme: dark){:root{--bg:#121417;--panel:#181b1f;--line:#2c3138;--ink:#e9e7e2;--ink-2:#a9adb4;--accent:#ff7a1a;--accent-ink:#111;--bad:#ff5a4e;--bad-soft:#3b1d1b;color-scheme:dark}}
+:root{--bg:#F2F2F1;--panel:#FFFFFF;--line:#DCDCDA;--ink:#1D1D1B;--ink-2:#575756;--accent:#D20A11;--accent-esc:#9C1006;--accent-ink:#fff;--bad:#B00D13;--bad-soft:#FBE3E4}
+@media (prefers-color-scheme: dark){:root{--bg:#121211;--panel:#1D1D1B;--line:#383836;--ink:#F2F2F1;--ink-2:#B2B2B2;--accent:#E1141B;--accent-esc:#B00D13;--accent-ink:#fff;--bad:#FF6B70;--bad-soft:#3B1517;color-scheme:dark}}
 *{box-sizing:border-box}
-body{margin:0;min-height:100dvh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif;padding:24px 16px}
-main{width:100%;max-width:360px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px 24px}
-h1{margin:0 0 4px;font-size:19px;display:flex;align-items:center;gap:9px}
-h1::before{content:"";width:11px;height:11px;border-radius:2px;background:var(--accent)}
+body{margin:0;min-height:100dvh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font:15px/1.45 "Interstate","Overpass",system-ui,sans-serif;padding:24px 16px}
+main{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:12px;padding:26px 24px 28px}
+.logo{display:block;height:46px;width:auto;margin:0 0 22px}
+.logo-esc{display:none}
+@media (prefers-color-scheme: dark){.logo-claro{display:none}.logo-esc{display:block}}
+h1{margin:0 0 4px;font-size:19px;font-weight:700;display:flex;align-items:center;gap:9px}
+h1::before{content:"";width:10px;height:10px;background:var(--accent);clip-path:polygon(0 0,100% 0,0 100%)}
 p{margin:0 0 20px;color:var(--ink-2);font-size:13.5px}
 label{display:block;font-size:13px;color:var(--ink-2);margin-bottom:14px}
 input{display:block;width:100%;margin-top:5px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
-button{width:100%;padding:10px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);font:600 15px inherit;font-family:inherit;cursor:pointer;margin-top:4px}
+button{width:100%;padding:10px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink);font:700 15px inherit;font-family:inherit;cursor:pointer;margin-top:4px}
+button:hover{background:var(--accent-esc)}
 .erro{background:var(--bad-soft);color:var(--bad);padding:9px 11px;border-radius:8px;font-size:13.5px;margin-bottom:14px}
 </style>
 </head>
 <body>
 <main>
+  <img class="logo logo-claro" src="{{ url_for('rotas.marca_publica', nome='neovia-logo.png') }}" alt="Neovia Engenharia" width="161" height="46">
+  <img class="logo logo-esc" src="{{ url_for('rotas.marca_publica', nome='neovia-logo-negativo.png') }}" alt="Neovia Engenharia" width="148" height="46">
   <h1>Mapa de Intervenções</h1>
   <p>Entre com a conta autorizada pelo administrador.</p>
   {% if erro %}<div class="erro" role="alert">{{ erro }}</div>{% endif %}

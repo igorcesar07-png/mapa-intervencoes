@@ -4,14 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="{{ csrf }}">
-<title>Minha conta · Mapa de Intervenções</title>
+<title>Minha conta · Mapa de Intervenções · Neovia Engenharia</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@300;400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('rotas.recursos', nome='marca/favicon-32.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('rotas.recursos', nome='marca/favicon-180.png') }}">
+<meta name="theme-color" content="#D20A11">
 <link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='admin.css', v=v_recursos) }}">
+<link rel="stylesheet" href="{{ url_for('rotas.recursos', nome='marca.css', v=v_recursos) }}">
 </head>
 <body>
 <header class="topo">
-  <h1>Minha conta</h1>
+  <img class="marca-logo marca-claro" src="{{ url_for('rotas.recursos', nome='marca/neovia-logo.png') }}" alt="Neovia Engenharia" width="133" height="38">
+  <img class="marca-logo marca-escuro" src="{{ url_for('rotas.recursos', nome='marca/neovia-logo-negativo.png') }}" alt="Neovia Engenharia" width="122" height="38">
+  <span class="marca-sep" aria-hidden="true"></span>
+  <h1 class="marca-produto">Minha conta</h1>
   <nav><a href="{{ url_for('rotas.relatorio') }}">Relatório</a>{% if admin %}<a href="{{ url_for('rotas.admin') }}">Painel</a>{% endif %}
     <form method="post" action="{{ url_for('rotas.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button type="submit">Sair</button></form></nav>
 </header>

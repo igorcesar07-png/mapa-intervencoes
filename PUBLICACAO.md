@@ -85,3 +85,34 @@ região; a alternativa gratuita é a VM AMD *micro* (1 GB; o instalador cria mem
   Tudo que o visualizador vê pode ser salvo pelo próprio navegador — impedir isso de verdade exige não
   publicar os dados (sistema com login). Para contas, envio de arquivos e permissões no servidor, use
   o sistema (Flask) ou um serviço externo de autenticação e armazenamento.
+
+### Endereço próprio (domínio da Neovia)
+
+Configuração atual: o site sai da branch `gh-pages` (publicada por `montar_pages.py`), num repositório de
+conta pessoal, por isso o endereço é `https://igorcesar07-png.github.io/mapa-intervencoes/`. Não há
+domínio próprio configurado (não existe arquivo `CNAME` no site).
+
+O que o projeto já faz: com a variável `MAPA_DOMINIO` o montador grava o arquivo `CNAME` no site, por
+exemplo `MAPA_DOMINIO=mapa.<dominio-da-neovia> python3 ferramentas/pages/montar_pages.py ...`. O nome é
+conferido (só letras, números, hífen e pontos) antes de gravar.
+
+O que depende de fora (TI da Neovia ou quem administra o DNS do domínio):
+
+1. **Escolher o subdomínio** dentro do domínio que a Neovia já tem (ex.: `mapa.` ou
+   `intervencoes.`). Não é preciso registrar domínio novo.
+2. **Verificar o domínio no GitHub** (recomendado, impede que outra conta use o mesmo nome):
+   GitHub → foto → *Settings → Pages → Add a domain* → o GitHub mostra um registro **TXT**
+   (`_github-pages-challenge-igorcesar07-png.<dominio>`) para a TI criar → *Verify*.
+3. **Criar o registro DNS**: tipo **CNAME**, nome = o subdomínio, valor = `igorcesar07-png.github.io`
+   (sem o `/mapa-intervencoes`). Não use registro curinga (`*`).
+4. **Ligar no repositório**: *Settings → Pages → Custom domain* → digitar o subdomínio → *Save*; depois
+   que o certificado sair (minutos a 24 h), marcar **Enforce HTTPS**.
+5. **Publicar de novo** com `MAPA_DOMINIO` definido, para o `CNAME` não sumir no próximo envio.
+   O endereço antigo `github.io` passa a redirecionar para o novo.
+
+Firebase: nada a mudar (o site só chama as APIs REST, que não dependem do endereço). Se um dia o
+login passar a usar o SDK/OAuth, incluir o domínio em *Authentication → Settings → Authorized domains*.
+
+Alternativa sem DNS: criar uma **organização** no GitHub com o nome da empresa e transferir o
+repositório para ela (*Settings → Transfer*); o endereço fica `https://<organizacao>.github.io/mapa-intervencoes/`.
+O nome da organização precisa estar livre no GitHub e ser escolhido pela Neovia.

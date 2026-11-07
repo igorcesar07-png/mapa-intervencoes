@@ -77,6 +77,28 @@ bases[baseInicial].addTo(mapa);
 mapa.on("baselayerchange", e => { try { localStorage.setItem("mapa_base", e.name); } catch(_){} });
 L.control.layers(bases, null, {position:"topright"}).addTo(mapa);
 L.control.scale({imperial:false, position:"bottomright"}).addTo(mapa);
+/* Créditos do mapa: as atribuições exigidas (OSM, Esri, Leaflet) ficam num botão discreto "ⓘ Créditos".
+   Aparecem abertas ao carregar e se recolhem após 5 s ou na primeira interação com o mapa;
+   a lista completa também está em "Créditos e fontes", no fim do painel. */
+(() => {
+  const el = mapa.getContainer();
+  const Cred = L.Control.extend({options:{position:"bottomright"}, onAdd(){
+    const b = L.DomUtil.create("button", "btn-creditos");
+    b.type = "button"; b.title = "Créditos do mapa"; b.setAttribute("aria-expanded", "true");
+    b.innerHTML = '<span aria-hidden="true">ⓘ</span> Créditos';
+    L.DomEvent.disableClickPropagation(b);
+    b.addEventListener("click", () => alternar(!el.classList.contains("cred-aberto")));
+    this.botao = b; return b;
+  }});
+  const ctl = new Cred().addTo(mapa);
+  function alternar(abrir){ el.classList.toggle("cred-aberto", abrir); ctl.botao.setAttribute("aria-expanded", String(abrir)); }
+  alternar(true);
+  let recolhido = false;
+  const recolher = () => { if (!recolhido){ recolhido = true; alternar(false); } };
+  setTimeout(recolher, 5000);
+  mapa.once("dragstart", recolher);
+  el.addEventListener("wheel", recolher, {once:true, passive:true});
+})();
 const render = L.canvas({padding:.3});
 const gTracado = L.layerGroup().addTo(mapa), gKm = L.layerGroup().addTo(mapa), gSeg = L.layerGroup().addTo(mapa);
 const gPontos = L.layerGroup().addTo(mapa), gAnom = L.layerGroup().addTo(mapa);

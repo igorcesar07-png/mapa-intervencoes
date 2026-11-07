@@ -137,7 +137,8 @@ def pagina(html, admin):
     html = re.sub(r'<meta name="csrf"[^>]*>\n', '', html)
     html = re.sub(r'\s*<div class="conta">.*?</div>\n', '\n', html, count=1, flags=re.S)
     html = html.replace('<link rel="stylesheet" href="/recursos/vendor/leaflet/leaflet.css', '<link rel="stylesheet" href="recursos/leaflet.css')
-    html = re.sub(r'href="/recursos/(relatorio|web)\.css\?v=[^"]*"', r'href="recursos/\1.css"', html)
+    html = re.sub(r'href="/recursos/(relatorio|web|marca)\.css\?v=[^"]*"', r'href="recursos/\1.css?v=' + VERSAO + '"', html)
+    html = re.sub(r'(href|src)="/recursos/marca/([\w.-]+)(?:\?[^"]*)?"', r'\1="recursos/marca/\2"', html)
     html = re.sub(r'href="recursos/leaflet\.css\?v=[^"]*"', 'href="recursos/leaflet.css"', html)
     html = re.sub(r'<script src="/recursos/vendor/leaflet/leaflet\.js[^"]*"></script>', '<script src="recursos/leaflet.js"></script>', html)
     html = re.sub(r'<script src="/recursos/vendor/leaflet-heat\.js[^"]*"></script>', '<script src="recursos/leaflet-heat.js"></script>', html)
@@ -154,6 +155,8 @@ def pagina(html, admin):
         html = html.replace('<body data-papel="admin">', '''<body data-papel="admin">
 <div class="cofre" id="cofre" role="dialog" aria-modal="true" aria-labelledby="cofreTit">
   <form class="cofre-caixa" id="cofreForm" autocomplete="off">
+    <img class="marca-logo cofre-logo marca-claro" src="recursos/marca/neovia-logo.png" alt="Neovia Engenharia" width="140" height="40">
+    <img class="marca-logo cofre-logo marca-escuro" src="recursos/marca/neovia-logo-negativo.png" alt="Neovia Engenharia" width="129" height="40">
     <h1 id="cofreTit">Área do administrador</h1>
     <p>Os dados completos (inconsistências, todas as fotos e exportação) ficam cifrados neste site e só abrem com a senha do administrador.</p>
     <div id="cofreEmailWrap" class="cofre-campo" hidden><label for="cofreEmail">E-mail do administrador</label>
@@ -184,7 +187,8 @@ shutil.copy(st / "vendor/leaflet/leaflet.css", OUT / "recursos/leaflet.css")
 shutil.copytree(st / "vendor/leaflet/images", OUT / "recursos/images")
 shutil.copy(st / "vendor/leaflet/leaflet.js", OUT / "recursos/leaflet.js")
 shutil.copy(st / "vendor/leaflet-heat.js", OUT / "recursos/leaflet-heat.js")
-for n in ("relatorio.css", "web.css"): shutil.copy(st / n, OUT / "recursos" / n)
+for n in ("relatorio.css", "web.css", "marca.css"): shutil.copy(st / n, OUT / "recursos" / n)
+shutil.copytree(st / "marca", OUT / "recursos/marca")
 AQUI = pathlib.Path(__file__).resolve().parent
 for n in ("cofre.js", "ajustes.js"): shutil.copy(AQUI / n, OUT / "recursos" / n)
 # configuração pública do Firebase (identificadores, não segredos); sem ela o site funciona sem ajustes compartilhados
@@ -193,4 +197,10 @@ cfg_fb = AQUI / "firebase-config.json"
 with open(OUT / "recursos/web.css", "a") as f: f.write((AQUI / "cofre.css").read_text())
 (OUT / ".nojekyll").write_text("")
 (OUT / "robots.txt").write_text("User-agent: *\nDisallow: /\n")
+# domínio próprio (opcional): com MAPA_DOMINIO=mapa.exemplo.com.br o arquivo CNAME entra no site.
+# Só defina depois que o registro DNS existir (ver PUBLICACAO.md, "Endereço próprio").
+DOMINIO = os.environ.get("MAPA_DOMINIO", "").strip().lower()
+if DOMINIO:
+    assert re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}", DOMINIO), DOMINIO
+    (OUT / "CNAME").write_text(DOMINIO + "\n")
 print("ok", quando)
