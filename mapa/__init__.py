@@ -103,6 +103,8 @@ def create_app(cfg=None, iniciar_worker=None):
     _admin_inicial(con)
     processamento.retomar_pendentes(con)
     corrigidas = processamento.corrigir_datas_invalidas(con)
+    if processamento.sinalizar_datas_antes_do_envio(con):
+        logging.getLogger("mapa").info("Fotos com data muito anterior ao envio pelo WhatsApp sinalizadas para conferência.")
     con.close()
     if iniciar_worker if iniciar_worker is not None else cfg.WORKER:
         w = processamento.Worker(cfg)

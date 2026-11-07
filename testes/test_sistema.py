@@ -471,3 +471,35 @@ def test_backup_e_restauracao_sem_perda(app, tmp_path, monkeypatch):
     assert [p.name for p in cfg2.ENVIOS_DIR.iterdir()] == [env["sha256"] + ".zip"] if "sha256" in env else True
     fid = depois["registros"][0]["id"]
     assert c3.get(f"/api/fotos/{fid}/imagem").status_code == 200
+
+
+def test_data_muito_antes_do_envio_e_correcao_manual(app):
+    _semear(app)
+    con = conectar(app.config["MAPA"].DB_PATH)
+    fid = f"{30:016x}"
+    # OCR leu "4" em vez de "31": carimbo 04/10, enviada pelo WhatsApp em 31/10
+    processamento.gravar_foto(con, {"id": fid, "arquivo": "WhatsApp Image 2026-10-31 at 17.44.41 (2).jpeg", "lote": "L1",
+                                    "data": "2026-10-04T14:48:19", "data_fonte": "carimbo", "lat": -25.2, "lon": -51.0,
+                                    "classe": "depois", "thumb": _jpeg(), "importado_em": "2026-11-05T20:00:00"}, None, None)
+    con.execute("UPDATE parametros SET valor=CAST(valor AS INTEGER)+1 WHERE chave='versao_dados'")
+    oc = con.execute("SELECT tipo FROM ocorrencias WHERE foto_id=? AND resolvida=0", (fid,)).fetchall()
+    con.close()
+    visao.invalidar()
+    assert ("data_antes_envio",) in [tuple(r) for r in oc]
+    a = entrar(app, "adm@teste.com", SENHA_ADM)
+    lista = a.get("/api/admin/fotos?classe=datas").get_json()["fotos"]
+    f = next(x for x in lista if x["id"] == fid)
+    assert f["sugestao_data"] == "2026-10-31T14:48:19"
+    # visualizador não corrige; data impossível é recusada
+    v = entrar(app, "vis@teste.com", SENHA_VIS)
+    assert v.post(f"/api/admin/fotos/{fid}/data", json={"data": "2026-10-31T14:48"}, headers={"X-CSRF-Token": v.csrf}).status_code == 403
+    assert a.post(f"/api/admin/fotos/{fid}/data", json={"data": "2026-10-33T14:48"}, headers={"X-CSRF-Token": a.csrf}).status_code == 400
+    r = a.post(f"/api/admin/fotos/{fid}/data", json={"data": "2026-10-31T14:48"}, headers={"X-CSRF-Token": a.csrf})
+    assert r.status_code == 200 and r.get_json()["data"] == "2026-10-31T14:48:00" and r.get_json()["data_original"] == "2026-10-04T14:48:19"
+    reg = next(x for x in a.get("/api/relatorio").get_json()["registros"] if x["id"] == fid)
+    assert reg["data"] == "2026-10-31T14:48:00" and reg["data_fonte"] == "manual"
+    assert not [x for x in a.get("/api/admin/fotos?classe=datas").get_json()["fotos"] if x["id"] == fid]
+    # a sinalização na partida não volta a abrir a ocorrência de uma foto já corrigida
+    con = conectar(app.config["MAPA"].DB_PATH)
+    assert processamento.sinalizar_datas_antes_do_envio(con) == 0
+    con.close()

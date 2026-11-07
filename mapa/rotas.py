@@ -9,6 +9,7 @@ from flask import (Blueprint, Response, abort, current_app, g, jsonify, redirect
 
 from . import eixo as eixo_mod
 from . import processamento, visao
+from .datas import data_valida
 from .db import agora, auditar, nova_versao, parametros, set_parametro
 from .seguranca import (PAPEIS, SENHA_MIN, autenticar, eh_admin, hash_senha, iniciar_sessao, requer_admin,
                         requer_login, token_csrf)
@@ -232,6 +233,9 @@ def api_fotos_admin():
     cond, args = [], []
     if classe == "nao_classificada":
         cond.append("classe IS NULL")
+    elif classe == "datas":
+        cond.append("id IN (SELECT foto_id FROM ocorrencias WHERE resolvida=0 AND foto_id IS NOT NULL AND tipo IN "
+                    "('data_antes_envio','data_suspeita','data_invalida','data_do_envio','sem_data','data_corrigida'))")
     elif classe in ("antes", "depois", "outro"):
         cond.append("classe=?")
         args.append(classe)
@@ -240,10 +244,48 @@ def api_fotos_admin():
         args.append(lote)
     where = ("WHERE " + " AND ".join(cond)) if cond else ""
     total = g.db.execute(f"SELECT COUNT(*) FROM fotos {where}", args).fetchone()[0]
-    rows = g.db.execute(f"SELECT id, arquivo, lote, data, lat, lon, classe, motivo_exclusao, classificado_em FROM fotos {where} "
+    rows = g.db.execute(f"SELECT id, arquivo, lote, data, data_fonte, lat, lon, classe, motivo_exclusao, classificado_em, extras FROM fotos {where} "
                         "ORDER BY data, arquivo, id LIMIT 60 OFFSET ?", args + [inicio]).fetchall()
+    fotos = []
+    for r in rows:
+        f = dict(r)
+        ex = json.loads(f.pop("extras") or "{}")
+        f["data_original"] = ex.get("data_manual_original")
+        # sugestão para conferir: o dia do envio pelo WhatsApp com a hora do carimbo
+        nd = ex.get("data_antes_envio")
+        f["sugestao_data"] = (nd[:10] + (f["data"] or "T00:00:00")[10:19]) if nd and not ex.get("data_manual") else None
+        fotos.append(f)
     lotes = [r[0] for r in g.db.execute("SELECT DISTINCT lote FROM fotos ORDER BY lote")]
-    return jsonify(fotos=[dict(r) for r in rows], total=total, inicio=inicio, lotes=lotes)
+    return jsonify(fotos=fotos, total=total, inicio=inicio, lotes=lotes)
+
+
+@bp.post("/api/admin/fotos/<foto_id>/data")
+@requer_admin
+def api_corrigir_data(foto_id):
+    """Correção manual da data de uma foto (ex.: dia lido errado pelo OCR). Guarda a data anterior e registra na auditoria."""
+    if not ID_FOTO.match(foto_id):
+        abort(404)
+    nova = str(_json().get("data") or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?", nova):
+        return jsonify(erro="Informe data e hora (dd/mm/aaaa hh:mm)."), 400
+    nova = nova if len(nova) == 19 else nova + ":00"
+    f = g.db.execute("SELECT data, data_fonte, extras, importado_em FROM fotos WHERE id=?", (foto_id,)).fetchone()
+    if not f:
+        abort(404)
+    if not data_valida(nova, f["importado_em"]):
+        return jsonify(erro="Data impossível ou posterior ao envio das fotos."), 400
+    ex = json.loads(f["extras"] or "{}")
+    ex.setdefault("data_manual_original", f["data"])
+    ex.setdefault("data_manual_fonte_original", f["data_fonte"])
+    ex["data_manual"] = True
+    g.db.execute("UPDATE fotos SET data=?, data_fonte='manual', extras=? WHERE id=?", (nova, json.dumps(ex, ensure_ascii=False), foto_id))
+    g.db.execute("UPDATE ocorrencias SET resolvida=1, resolvida_por=?, resolvida_em=? WHERE foto_id=? AND resolvida=0 AND tipo IN "
+                 "('data_antes_envio','data_suspeita','data_invalida','data_do_envio','sem_data','data_corrigida')",
+                 (g.usuario["id"], agora(), foto_id))
+    nova_versao(g.db)
+    visao.invalidar()
+    auditar(g.db, g.usuario["id"], "corrigiu_data_foto", {"foto": foto_id, "de": f["data"], "para": nova})
+    return jsonify(ok=True, data=nova, data_original=ex["data_manual_original"])
 
 
 @bp.post("/api/admin/fotos/<foto_id>/classe")

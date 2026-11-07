@@ -31,7 +31,7 @@ assert rel_a["papel"] == "admin" and rel_v["papel"] == "visualizador"
 html_a, html_v = ca.get("/").data.decode(), cv.get("/").data.decode()
 publicos = {r["id"] for r in rel_v["registros"]}
 
-def reduzir(dados, lado=1280, q=70):
+def reduzir(dados, lado=1024, q=64):
     im = Image.open(io.BytesIO(dados)).convert("RGB"); im.thumbnail((lado, lado))
     b = io.BytesIO(); im.save(b, "JPEG", quality=q, optimize=True, progressive=True); return b.getvalue()
 

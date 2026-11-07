@@ -227,6 +227,9 @@ def ocorrencias_da_foto(r):
     if r.get("data_invalida"):
         o.append(("data_invalida", f"O carimbo traz uma data impossível ({fmt_br(r['data_invalida'])}). "
                   + ("Foi usada a data de envio do nome do arquivo." if r.get("data") else "A foto fica sem data até ser revista.")))
+    if r.get("data_antes_envio"):
+        o.append(("data_antes_envio", f"Data do carimbo ({fmt_br(r['data'])}) muito anterior ao envio pelo WhatsApp "
+                  f"({fmt_br(r['data_antes_envio'])}). Pode ser erro de leitura do dia: confira a foto e corrija a data no painel."))
     if r.get("coord_revisada"):
         o.append(("coordenada_corrigida", f"Coordenada relida automaticamente (OCR leu {r.get('coord_ocr_original')})."))
     return o
@@ -246,6 +249,50 @@ def validar_data_registro(r):
     if nd and data_valida(nd, ref):
         r["data"], r["data_fonte"] = nd, "nome_arquivo"
     return r
+
+
+DIAS_ANTES_DO_ENVIO = 3
+
+
+def data_antes_do_envio(r):
+    """Data do carimbo/EXIF mais de 3 dias ANTES do envio pelo WhatsApp (data no nome do arquivo):
+    devolve a data do envio (indício de dia lido errado pelo OCR, ex.: 31 lido como 4); senão None.
+    Não altera nada: só sinaliza para o administrador conferir."""
+    if not r.get("data") or r.get("data_fonte") not in ("carimbo", "exif"):
+        return None
+    try:
+        nd = leitura().data_do_nome(r.get("arquivo") or "")
+    except Exception:
+        return None
+    if not nd:
+        return None
+    from datetime import datetime, timedelta
+    try:
+        if datetime.fromisoformat(r["data"][:19]) < datetime.fromisoformat(nd[:19]) - timedelta(days=DIAS_ANTES_DO_ENVIO):
+            return nd
+    except ValueError:
+        return None
+    return None
+
+
+def sinalizar_datas_antes_do_envio(con):
+    """Para fotos já gravadas (idempotente): registra a ocorrência 'data_antes_envio' uma única vez."""
+    n = 0
+    for f in con.execute("SELECT id, arquivo, data, data_fonte, extras, envio_id, membro FROM fotos WHERE data IS NOT NULL").fetchall():
+        extras = json.loads(f["extras"] or "{}")
+        if extras.get("data_antes_envio") or extras.get("data_manual"):
+            continue
+        nd = data_antes_do_envio(dict(f))
+        if not nd:
+            continue
+        extras["data_antes_envio"] = nd
+        con.execute("UPDATE fotos SET extras=? WHERE id=?", (json.dumps(extras, ensure_ascii=False), f["id"]))
+        for tipo, msg in ocorrencias_da_foto({**dict(f), "lat": 0, "data_antes_envio": nd}):
+            if tipo == "data_antes_envio":
+                con.execute("INSERT INTO ocorrencias(envio_id, foto_id, membro, tipo, mensagem, criado_em) VALUES(?,?,?,?,?,?)",
+                            (f["envio_id"], f["id"], f["membro"], tipo, msg, agora()))
+        n += 1
+    return n
 
 
 def corrigir_datas_invalidas(con):
@@ -273,7 +320,10 @@ def corrigir_datas_invalidas(con):
 
 def gravar_foto(con, r, envio_id, membro, classe=None, motivo=None, extras_extra=None):
     r = validar_data_registro(r)
-    extras = {k: r[k] for k in ("texto_ocr", "data_revisada", "data_ocr_original", "data_suspeita", "data_invalida",
+    nd = data_antes_do_envio(r)
+    if nd:
+        r = {**r, "data_antes_envio": nd}
+    extras = {k: r[k] for k in ("texto_ocr", "data_revisada", "data_ocr_original", "data_suspeita", "data_invalida", "data_antes_envio",
                                 "coord_revisada", "coord_ocr_original", "revisado_manual") if r.get(k) is not None}
     if extras_extra:
         extras.update(extras_extra)

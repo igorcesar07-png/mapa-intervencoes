@@ -137,7 +137,13 @@ async function carregarFotos(){
     $("#gFotos").innerHTML = j.fotos.length ? j.fotos.map(f => `
       <div class="foto" data-id="${f.id}" data-classe="${f.classe || ""}">
         <img src="${mini(f.id)}" data-full="${grande(f.id)}" alt="" loading="lazy">
-        <div class="info">${dataBR(f.data)}${f.lat == null ? " · sem coordenada" : ""}<br>${esc(f.lote)}</div>
+        <div class="info"><span class="dt">${dataBR(f.data)}</span>${f.data_fonte === "manual" ? ` <em class="dt-man" title="Corrigida no painel; antes: ${esc(dataBR(f.data_original))}">corrigida</em>` : ""}${f.lat == null ? " · sem coordenada" : ""}
+          <button type="button" class="lnk" data-edit-data>Corrigir data</button><br>${esc(f.lote)}
+          ${f.sugestao_data ? `<span class="sug">Envio pelo WhatsApp em ${dataBR(f.sugestao_data).slice(0,10)}: confira o dia.</span>` : ""}</div>
+        <div class="data-form" hidden>
+          <input type="datetime-local" step="1" value="${(f.sugestao_data || f.data || "").slice(0,19)}" aria-label="Data e hora corretas">
+          <button type="button" class="btn pri mini" data-salvar-data>Salvar data</button>
+        </div>
         <div class="acoes">${["antes","depois","outro"].map(c => `<button type="button" class="btn ${f.classe===c?"on":""}" data-c="${c}">${ROT[c]}</button>`).join("")}</div>
         <div class="outro-form" hidden>
           <input type="text" placeholder="Motivo (ex.: chuva, sem buraco)" maxlength="200">
@@ -158,6 +164,19 @@ async function carregarFotos(){
         salvarClasse(card, b.dataset.c, "");
       });
       form.querySelector("[data-salvar-outro]").onclick = () => salvarClasse(card, "outro", inp.value);
+      const fd = card.querySelector(".data-form"), inpD = fd.querySelector("input");
+      card.querySelector("[data-edit-data]").onclick = () => { fd.hidden = !fd.hidden; if (!fd.hidden) inpD.focus(); };
+      fd.querySelector("[data-salvar-data]").onclick = async () => {
+        if (!inpD.value){ estadoCard(card, "Informe a data e a hora.", "erro"); return; }
+        estadoCard(card, "Salvando a data…", "salvando");
+        try{
+          const j = await api(`/api/admin/fotos/${card.dataset.id}/data`, {method:"POST", json:{data:inpD.value}});
+          card.querySelector(".dt").textContent = dataBR(j.data);
+          const s = card.querySelector(".sug"); if (s) s.remove();
+          fd.hidden = true;
+          estadoCard(card, `Data salva: ${dataBR(j.data)} (antes: ${dataBR(j.data_original)}). O mapa e os gráficos já usam a nova data.`, "ok");
+        }catch(e){ estadoCard(card, "Não foi possível salvar a data. " + (e.message || ""), "erro"); }
+      };
       inp.addEventListener("keydown", e => { if (e.key === "Enter") salvarClasse(card, "outro", inp.value); });
     });
   }catch(e){ $("#gFotos").innerHTML = `<p class="msg erro">${esc(e.message)}</p>`; }
