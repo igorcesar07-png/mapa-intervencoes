@@ -5,7 +5,7 @@
 set -euxo pipefail
 exec > >(tee -a /var/log/mapa-instalacao.log) 2>&1
 
-REPO="git@github.com:igorcesar07-png/mapa-intervencoes.git"
+REPO="git@github.com:viaaraucaria/mapa-intervencoes.git"
 export DEBIAN_FRONTEND=noninteractive
 
 # --- pacotes: Docker, Compose, git
